@@ -1,0 +1,235 @@
+# C3-Radar
+
+A live aircraft radar for your desk: an **ESP32-C3 Super Mini** and a **2.1" round 360×360 GC9B72 display** showing the planes around you, straight from the free [adsb.fi](https://opendata.adsb.fi/) feed. No receiver or antenna needed — just Wi-Fi.
+
+![Radar display: busy airspace, mixed traffic with a military aircraft, and military-only mode](docs/images/display-hero.png)
+
+*Rendered from live adsb.fi traffic with the firmware's own drawing code (see [PC preview](#pc-preview)).*
+
+C3-Radar is a port of [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) (made for a 1.28" 240×240 GC9A01) to the larger GC9B72 panel, with redrawn graphics and a web page to control it.
+
+> **Status: beta.** The firmware builds and its drawing code and web page have been tested on a PC, but this release has not yet been confirmed on real hardware. If the screen stays blank or the colours look wrong, see [Troubleshooting](#troubleshooting) and please open an issue.
+
+## Features
+
+- **Sharp 360×360 graphics** — smooth fonts and rings, compass ticks, runway overlays for large airports.
+- **Aircraft silhouettes** — jet, light aircraft and helicopter shapes that point along the heading, coloured by altitude, with a speed line and a short trail.
+- **Readable tags** — callsign, type and altitude with a climb/descent arrow. Tags never overlap: in busy airspace, farther aircraft drop to callsign-only or no tag.
+- **Military aircraft** — always drawn red with a ring, plus a **military-only** switch that hides everything else.
+- **Web page** — a live copy of the screen, range buttons and every setting, from any phone or computer on your network.
+- **Adjustable web server port** — move the web page off port 80 if you need to.
+- **Easy Wi-Fi setup** — the device opens its own hotspot the first time; no code changes needed.
+
+## What you need
+
+| Part | Notes |
+|---|---|
+| ESP32-C3 Super Mini | 4 MB flash, USB-C |
+| 2.1" round TFT, GC9B72, 360×360, SPI | The back of the board is marked `GC9B72` |
+| 8 jumper wires | 7 if you skip the backlight wire |
+| USB-C data cable | For flashing and power |
+
+## Wiring
+
+| Display pin | ESP32-C3 pin |
+|---|---|
+| VCC | **3V3** (do not use 5 V) |
+| GND | GND |
+| SCL | GPIO 4 |
+| SDA | GPIO 3 |
+| DC | GPIO 10 |
+| CS | GPIO 1 |
+| RST (RES) | GPIO 0 |
+| BL (BLK) | GPIO 5 — optional, only needed for the brightness slider |
+
+Pins are set in [`include/config.h`](include/config.h) if you need a different layout.
+
+## Install the firmware
+
+The ready-made image is [`firmware/c3-radar-merged.bin`](firmware/c3-radar-merged.bin). It contains everything and is flashed at address **0x0**.
+
+### From a browser (no software to install)
+
+1. Open [esptool-js](https://espressif.github.io/esptool-js/) in Chrome or Edge.
+2. Put the board in download mode: hold **BOOT**, tap **RESET**, release **BOOT**.
+3. Click **Connect** and pick the board's serial port.
+4. Set the flash address to `0x0`, choose `c3-radar-merged.bin`, click **Program**.
+5. Tap **RESET** when it finishes.
+
+### From the command line
+
+```bash
+pip install esptool
+```
+
+```bash
+esptool.py --chip esp32c3 write_flash 0x0 firmware/c3-radar-merged.bin
+```
+
+## First-time setup
+
+![Wi-Fi setup, connecting, connected and failure screens](docs/images/status-screens.png)
+
+1. Power the board. The screen turns yellow and shows **Wi-Fi setup**.
+2. On your phone or computer, join the Wi-Fi network **`PlaneRadar-Setup`**.
+3. A setup page should open by itself. If it doesn't, browse to `http://192.168.4.1`.
+4. Choose **Configure WiFi**, pick your home network and enter its password.
+5. On the same form, enter your **latitude and longitude** (right-click any spot in Google Maps to copy them). You can also set miles, runways, military-only and the web server port here.
+6. Save. The device restarts its connection, shows **Connected** with its web address for a few seconds, then starts the radar.
+
+## Reading the display
+
+![Radar at the 10 km range around an airport](docs/images/display-10km.png)
+
+| On screen | Meaning |
+|---|---|
+| Centre dot | Your location |
+| Rings | Distance; the green label on the right is the distance of the third ring |
+| Aircraft shape | Jet, light aircraft or helicopter, pointing where the nose points |
+| Aircraft colour | Altitude: orange (low) → yellow → green → cyan → blue → purple (high); grey if unknown |
+| Red aircraft with a ring | Military |
+| Line ahead of an aircraft | Direction of travel; longer means faster |
+| Dots behind an aircraft | Where it has just been |
+| Tag | Callsign (white), aircraft type (amber), altitude in feet (blue) with ▲ climbing or ▼ descending |
+| Dots on the rim | Aircraft beyond the outer ring, shown at the correct bearing |
+| Teal lines and four-letter codes | Runways and ICAO code of large airports |
+| `MIL ONLY` badge | The military-only filter is on |
+| `NO DATA` badge | No aircraft data received for 30 seconds |
+
+Aircraft on the ground are hidden.
+
+### The BOOT button
+
+| Action | Effect |
+|---|---|
+| Short press | Next range: 5 → 10 → 15 → 25 km |
+| Hold 3 seconds | Erase Wi-Fi, location and all settings (including the web port), then restart in setup mode |
+
+## The web page
+
+Once the radar is on your network, open **`http://plane-radar.local`** or the IP address shown on the **Connected** screen at start-up.
+
+<img src="docs/images/web-desktop.png" alt="Web page on a computer" width="640"> <img src="docs/images/web-phone.png" alt="Web page on a phone" width="210">
+
+| Section | What it does |
+|---|---|
+| Display | Live copy of the screen, refreshed about every 2 seconds, and the range buttons |
+| Aircraft | Military-only, runways and miles/kilometres switches |
+| Location | Latitude and longitude of the radar centre |
+| Screen | Brightness, rotation, and two colour fixes (invert, swap red/blue) |
+| Network | Web server port, plus links to Wi-Fi setup and device info |
+
+Changes apply immediately and are remembered after a power cut.
+
+### Changing the web server port
+
+Enter a port from 1 to 65535 under **Network** and click **Change port**. The web server restarts and your browser follows it to the new address, for example `http://plane-radar.local:8080`.
+
+- The setup hotspot always uses port 80.
+- The **Connected** screen at start-up shows the current address and port.
+- Forgot the port? Hold **BOOT** for 3 seconds to reset everything.
+
+### Military-only mode
+
+adsb.fi marks aircraft that its database lists as military. With the switch on, only those are fetched and drawn, and the screen shows a `MIL ONLY` badge so an empty radar isn't mistaken for a fault. Coverage depends on that database, and military aircraft that don't broadcast their position won't appear.
+
+## Troubleshooting
+
+| Problem | Try this |
+|---|---|
+| Screen stays black | Check VCC is on 3V3 and every wire against the table. If BL is wired, check it goes to GPIO 5; if not, leave it unconnected. |
+| Colours look like a photo negative | Web page → Screen → **Invert colours** |
+| Red and blue are swapped | Web page → Screen → **Swap red / blue** |
+| Picture is sideways or upside down | Web page → Screen → **Rotation** |
+| `plane-radar.local` doesn't open | Use the IP address from the **Connected** screen or your router's device list; add `:port` if you changed the port |
+| No aircraft | Check the location is right, try the 25 km range, and make sure military-only is off |
+| `NO DATA` badge | The device can't reach adsb.fi; check your internet connection |
+| Stuck on the yellow **Could not connect** screen | Hold **BOOT** for 3 seconds and run setup again |
+| Brightness slider does nothing | The display's BL pin must be wired to GPIO 5 |
+
+For more detail, connect over USB and open a serial monitor at 115200 baud.
+
+## Build from source
+
+You need [PlatformIO](https://platformio.org/install/cli).
+
+```bash
+pio run -e supermini -t upload
+```
+
+```bash
+pio device monitor
+```
+
+To make the single-file image for browser flashing (written to `.pio/build/supermini/firmware-merged.bin`):
+
+```bash
+pio run -e supermini -t merge
+```
+
+Pushing a tag such as `v1.0.0` makes GitHub Actions build the firmware and attach it to a release.
+
+### Where things are
+
+| Path | Contents |
+|---|---|
+| `include/config.h` | Pins, default location, timings |
+| `include/ui/radar_theme.h` | Layout and colours |
+| `src/ui/radar_display.cpp` | Radar drawing |
+| `src/services/web_ui.cpp`, `web_page.h` | Web page and its API |
+| `src/services/adsb_client.cpp`, `adsb_store.cpp` | adsb.fi download and parsing |
+| `src/services/wifi_setup.cpp` | Wi-Fi setup and web server start-up |
+| `scripts/` | Generators for fonts, aircraft icons and the airport database |
+| `tools/host_preview/` | PC preview build |
+
+### Regenerating assets
+
+```bash
+python3 scripts/build_fonts.py path/to/Font-Bold.otf
+```
+
+```bash
+python3 scripts/build_aircraft_icons.py --preview icons.png
+```
+
+```bash
+python3 scripts/build_large_airports.py
+```
+
+The embedded fonts are [Inter](https://rsms.me/inter/) Bold (SIL Open Font License).
+
+### PC preview
+
+`tools/host_preview` compiles the firmware's drawing code for a computer and renders the screen to a BMP from a saved adsb.fi response, so you can change the graphics without flashing a board. Run one build first so PlatformIO downloads the libraries.
+
+```bash
+tools/host_preview/build.sh
+```
+
+```bash
+curl -o snapshot.json "https://opendata.adsb.fi/api/v3/lat/40.64/lon/-73.78/dist/21"
+```
+
+```bash
+mkdir -p out && tools/host_preview/host_preview data out 40.64 -73.78 3 0 snapshot.json
+```
+
+The arguments are: font folder, output folder, latitude, longitude, range index (0–3), military-only (0 or 1), then one or more snapshots.
+
+### Web API
+
+| Request | Purpose |
+|---|---|
+| `GET /api/state` | Current settings and aircraft counts as JSON |
+| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `brightness`, `rotation`, `invert`, `swap_rb`, `port` |
+| `GET /screen.bmp` | The current screen as a 360×360 BMP |
+
+The web page has no password; anyone on your network can open it.
+
+## Credits and licence
+
+- Original project: [ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) by MatixYo.
+- Aircraft data: [adsb.fi open data](https://opendata.adsb.fi/). Airport data: [OurAirports](https://ourairports.com/).
+- Libraries: [LovyanGFX](https://github.com/lovyan03/LovyanGFX), [WiFiManager](https://github.com/tzapu/WiFiManager), [ArduinoJson](https://github.com/bblanchon/ArduinoJson).
+
+Released under the [MIT licence](LICENSE).

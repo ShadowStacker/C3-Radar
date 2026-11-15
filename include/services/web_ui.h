@@ -1,0 +1,17 @@
+#pragma once
+
+#include <WebServer.h>
+
+/** Device web page: live copy of the round display plus all settings. */
+namespace services::web {
+
+/**
+ * Add the page and its API to the Wi-Fi manager's web server. Must run before
+ * the manager registers its own handlers so "/" resolves to the radar page.
+ */
+void registerRoutes(WebServer& server);
+
+/** True once after the HTTP port was changed: the server must be restarted. */
+bool consumePortChange();
+
+}  // namespace services::web
