@@ -4,7 +4,7 @@
 
 #include <driver/gpio.h>
 
-#define PLANE_RADAR_VERSION "0.10.0"
+#define PLANE_RADAR_VERSION "0.11.0"
 
 namespace config {
 
@@ -50,9 +50,10 @@ constexpr int kDisplayWidth = 360;
 constexpr int kDisplayHeight = 360;
 
 constexpr uint32_t kDisplaySpiWriteHz = 40000000;
-/** Power-on defaults; both can be flipped from the web page without reflashing. */
+/** Colour inversion default; can be flipped from the web page. */
 constexpr bool kDisplayInvert = false;
-constexpr bool kDisplayRgbOrder = false;
+/** These GC9B72 modules are wired BGR: without this, reds show as blue. */
+constexpr bool kDisplayRgbOrder = true;
 
 // --- Web server ---
 /** Default HTTP port for the LAN web page (changeable from the web page). */

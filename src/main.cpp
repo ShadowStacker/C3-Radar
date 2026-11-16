@@ -11,10 +11,12 @@
 #include "services/device_settings.h"
 #include "services/map_store.h"
 #include "services/radar_location.h"
+#include "services/web_ui.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
+#include "ui/theme.h"
 
 namespace {
 
@@ -72,7 +74,7 @@ void handleBootButton() {
 // lock; the render loop reads a snapshot.
 void adsbFetchTask(void*) {
   for (;;) {
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED && !services::web::updateInProgress()) {
       services::adsb::fetchUpdate(services::location::lat(),
                                   services::location::lon(),
                                   ui::radar::fetchRadiusKm(),
@@ -93,6 +95,7 @@ void setup() {
 
   bootButtonInit();
   services::device::init();
+  ui::theme::init();
   displayInit();
   // Grab the strip buffer while the heap is still unfragmented.
   ui::radarDisplayInit();
@@ -116,6 +119,12 @@ void setup() {
 void loop() {
   handleBootButton();
   wifiLoop();
+
+  if (services::web::rebootPending()) {
+    Serial.println("Firmware updated - restarting");
+    delay(400);  // let the browser receive the reply
+    ESP.restart();
+  }
 
   if (WiFi.status() != WL_CONNECTED) {
     g_info_screen_until_ms = 0;

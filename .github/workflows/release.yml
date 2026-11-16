@@ -48,8 +48,11 @@ jobs:
             VERSION="manual-${GITHUB_SHA::7}"
           fi
           mkdir -p dist
-          cp .pio/build/supermini/firmware-merged.bin "dist/c3-radar-${VERSION}.bin"
-          sha256sum "dist/c3-radar-${VERSION}.bin" > "dist/c3-radar-${VERSION}.bin.sha256"
+          # full   = everything, for USB flashing at 0x0 (erases settings)
+          # update = app only, for the web page's Firmware update (keeps settings)
+          cp .pio/build/supermini/firmware-merged.bin "dist/c3-radar-${VERSION}-full.bin"
+          cp .pio/build/supermini/firmware.bin "dist/c3-radar-${VERSION}-update.bin"
+          (cd dist && sha256sum *.bin > "c3-radar-${VERSION}.sha256")
           echo "version=${VERSION}" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release

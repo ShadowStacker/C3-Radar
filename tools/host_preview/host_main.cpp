@@ -17,6 +17,7 @@
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
+#include "ui/theme.h"
 
 HostSerial Serial;
 static unsigned long s_now = 1000;
@@ -92,6 +93,7 @@ bool feed(const std::string& json_path, bool military_only) {
 
 // --- stand-ins for the device identity (normally derived from the chip's MAC)
 namespace services::device {
+uint8_t brightness() { return 255; }
 const char* name() { return "plane-radar-a1b2"; }
 const char* hostname() { return "plane-radar-a1b2"; }
 const char* hostUrl() { return "plane-radar-a1b2.local"; }
@@ -122,6 +124,11 @@ int main(int argc, char** argv) {
     }
   }
 
+  // C3_THEME=<preset number> picks a colour theme.
+  ui::theme::init();
+  if (const char* theme = std::getenv("C3_THEME")) {
+    ui::theme::select(static_cast<uint8_t>(std::atoi(theme)));
+  }
   tft.init();
   tft.setTextWrap(false);
 

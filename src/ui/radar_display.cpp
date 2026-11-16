@@ -12,12 +12,14 @@
 #include "hardware/display.h"
 #include "hardware/display_font.h"
 #include "services/adsb_client.h"
+#include "services/device_settings.h"
 #include "services/radar_location.h"
 #include "ui/map_layer.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
 #include "ui/runway_overlay.h"
 #include "ui/strip_canvas.h"
+#include "ui/theme.h"
 
 /*
  * Rendering model
@@ -56,6 +58,8 @@ constexpr int kTagSafeRadius = kCx - 4;
 
 using namespace canvas;
 
+inline const theme::Palette& pal() { return theme::palette(); }
+
 bool s_band_ready = false;
 
 void wideLine(int x0, int y0, int x1, int y1, float half_w, uint16_t color) {
@@ -89,7 +93,7 @@ void drawIcon(int cx, int cy, uint8_t shape, uint8_t heading_idx, uint16_t color
       const uint32_t outline = v >> 4;
       const uint32_t fill = v & 0x0F;
       if (outline != 0) {
-        px = mix565(px, radar::kColorOutline, (outline * 32u + 7u) / 15u);
+        px = mix565(px, pal().outline, (outline * 32u + 7u) / 15u);
       }
       if (fill != 0) {
         px = mix565(px, color, (fill * 32u + 7u) / 15u);
@@ -219,8 +223,11 @@ uint16_t altitudeColor(int32_t alt_ft) {
       {42000, 235, 115, 255},
   };
   constexpr size_t kN = sizeof(kStops) / sizeof(kStops[0]);
+  if (!pal().altitude_colors) {
+    return pal().aircraft;
+  }
   if (alt_ft == services::adsb::kAltUnknown || alt_ft == services::adsb::kAltGround) {
-    return radar::rgb565(165, 175, 190);
+    return pal().aircraft_unknown;
   }
   if (alt_ft <= kStops[0].alt) {
     return radar::rgb565(kStops[0].r, kStops[0].g, kStops[0].b);
@@ -633,7 +640,7 @@ void buildFrame() {
     proj.toKm(lat, lon, &dx_km, &dy_km);
     const float dist_km = sqrtf(dx_km * dx_km + dy_km * dy_km);
     const uint16_t color =
-        plane.military ? radar::kColorMilitary : altitudeColor(plane.alt_ft);
+        plane.military ? pal().military : altitudeColor(plane.alt_ft);
 
     if (dist_km > inside_km) {
       if (dist_km < 0.01f) {
@@ -748,44 +755,44 @@ void buildFrame() {
 // --------------------------------------------------------------- strip drawing
 
 void drawGrid() {
-  s_band.fillScreen(radar::kColorBezel);
-  fillDisc(kCx, kCy, kRingR, radar::kColorScope);
+  s_band.fillScreen(pal().bezel);
+  fillDisc(kCx, kCy, kRingR, pal().scope);
   map::drawLines();
 
   // Crosshair first so the rings cross over it cleanly.
   if (rowsVisible(kCy, kCy)) {
-    fillSpan(kCx - kRingR, kCx + kRingR, kCy, radar::kColorCross);
+    fillSpan(kCx - kRingR, kCx + kRingR, kCy, pal().cross);
   }
   {
     const int y0 = std::max(kCy - kRingR, s_by);
     const int y1 = std::min(kCy + kRingR, s_by + kBandH - 1);
     for (int y = y0; y <= y1; ++y) {
-      blendPx(kCx, y, radar::kColorCross, 32);
+      blendPx(kCx, y, pal().cross, 32);
     }
   }
 
   for (int i = 1; i < radar::kRingCount; ++i) {
-    ring(kCx, kCy, kRingR * i / radar::kRingCount, 8, radar::kColorRing);
+    ring(kCx, kCy, kRingR * i / radar::kRingCount, 8, pal().ring);
   }
-  ring(kCx, kCy, kRingR, 12, radar::kColorRingOuter);
+  ring(kCx, kCy, kRingR, 12, pal().ring_outer);
 
   for (int i = 0; i < kTickCount; ++i) {
     if (i % 9 == 0) {
       continue;  // N / E / S / W letters sit here
     }
     const TickMark& t = s_ticks[i];
-    wideLine(t.x0, t.y0, t.x1, t.y1, 0.8f, radar::kColorTick);
+    wideLine(t.x0, t.y0, t.x1, t.y1, 0.8f, pal().tick);
   }
 }
 
 void drawRunways() {
   for (size_t i = 0; i < s_runway_count; ++i) {
     const runway::Segment& s = s_runways[i];
-    wideLine(s.x0, s.y0, s.x1, s.y1, radar::kRunwayLineHalfWidth, radar::kColorRunway);
+    wideLine(s.x0, s.y0, s.x1, s.y1, radar::kRunwayLineHalfWidth, pal().runway);
   }
   for (size_t i = 0; i < s_runway_label_count; ++i) {
     const runway::Label& l = s_runway_labels[i];
-    drawText(l.ident, l.x, l.y, UiFont::kSmall14, radar::kColorRunwayLabel,
+    drawText(l.ident, l.x, l.y, UiFont::kSmall14, pal().runway_label,
              textdatum_t::bottom_center);
   }
 }
@@ -794,11 +801,11 @@ void drawMapLabels() {
   for (size_t i = 0; i < s_map_label_count; ++i) {
     const map::LabelCandidate& l = s_map_labels[i];
     if (l.airfield) {
-      drawText(l.text, l.x, l.y - 3, UiFont::kSmall14, radar::kColorRunwayLabel,
+      drawText(l.text, l.x, l.y - 3, UiFont::kSmall14, pal().runway_label,
                textdatum_t::bottom_center);
       continue;
     }
-    const uint16_t color = l.rank >= 2 ? radar::kColorTownMajor : radar::kColorTownMinor;
+    const uint16_t color = l.rank >= 2 ? pal().town_major : pal().town_minor;
     spot(l.x, l.y, 24, color, 26);
     drawText(l.text, l.x, l.y - 3, UiFont::kSmall14, color, textdatum_t::bottom_center);
   }
@@ -806,13 +813,13 @@ void drawMapLabels() {
 
 void drawCompassLabels() {
   const int r = radar::kCardinalRadius;
-  drawText("N", kCx, kCy - r, UiFont::kCardinal20, radar::kColorCardinalNorth,
+  drawText("N", kCx, kCy - r, UiFont::kCardinal20, pal().north,
            textdatum_t::middle_center);
-  drawText("S", kCx, kCy + r, UiFont::kCardinal20, radar::kColorLabel,
+  drawText("S", kCx, kCy + r, UiFont::kCardinal20, pal().label,
            textdatum_t::middle_center);
-  drawText("W", kCx - r, kCy, UiFont::kCardinal20, radar::kColorLabel,
+  drawText("W", kCx - r, kCy, UiFont::kCardinal20, pal().label,
            textdatum_t::middle_center);
-  drawText("E", kCx + r, kCy, UiFont::kCardinal20, radar::kColorLabel,
+  drawText("E", kCx + r, kCy, UiFont::kCardinal20, pal().label,
            textdatum_t::middle_center);
 }
 
@@ -831,17 +838,17 @@ void drawPill(const char* text, int x, int y, uint16_t back, uint16_t fore) {
 
 void drawScaleAndBadge() {
   // Range label on the east spoke, between ring 3 and the outer ring.
-  drawPill(s_scale_label, kCx + kScaleLabelRadius, kCy, radar::kColorScope,
-           radar::kColorScale);
+  drawPill(s_scale_label, kCx + kScaleLabelRadius, kCy, pal().scope,
+           pal().scale);
   if (s_badge != nullptr) {
-    drawPill(s_badge, kCx, kCy + kScaleLabelRadius, radar::kColorBadgeBack,
-             radar::kColorLabel);
+    drawPill(s_badge, kCx, kCy + kScaleLabelRadius, pal().badge_back,
+             pal().badge_text);
   }
 }
 
 void drawCenterMarker() {
-  ring(kCx, kCy, 7, 8, radar::kColorCenter, 12);
-  spot(kCx, kCy, radar::kCenterDotRadius * 16, radar::kColorCenter);
+  ring(kCx, kCy, 7, 8, pal().center, 12);
+  spot(kCx, kCy, radar::kCenterDotRadius * 16, pal().center);
 }
 
 void drawTrails() {
@@ -857,7 +864,7 @@ void drawTrails() {
 void drawRimDots() {
   for (size_t i = 0; i < s_dot_count; ++i) {
     const RimDot& d = s_dots[i];
-    spot(d.x, d.y, radar::kBeyondRingDotRadiusPx * 16 + 16, radar::kColorOutline);
+    spot(d.x, d.y, radar::kBeyondRingDotRadiusPx * 16 + 16, pal().outline);
     spot(d.x, d.y, radar::kBeyondRingDotRadiusPx * 16, d.color);
   }
 }
@@ -873,7 +880,7 @@ void drawSymbols() {
     }
     drawIcon(item.x, item.y, plane.shape, item.heading_idx, item.color);
     if (plane.military) {
-      ring(item.x, item.y, radar::kAircraftHalfPx + 3, 10, radar::kColorMilitary, 26);
+      ring(item.x, item.y, radar::kAircraftHalfPx + 3, 10, pal().military, 26);
     }
   }
 }
@@ -896,7 +903,7 @@ void drawTags() {
     }
     const Aircraft& plane = s_planes[item.index];
     const Rect& r = item.tag;
-    blendRect(r.x, r.y, r.w, r.h, radar::kColorTagBack, 20);
+    blendRect(r.x, r.y, r.w, r.h, pal().tag_back, 20);
 
     // Text hugs the symbol: right-aligned when the tag sits to its left.
     const bool align_right = r.x + r.w / 2 < item.x - radar::kAircraftHalfPx;
@@ -906,25 +913,24 @@ void drawTags() {
 
     int y = r.y + kTagPadY;
     if (plane.callsign[0] != '\0') {
-      const uint16_t color = plane.military ? radar::rgb565(255, 150, 135)
-                                            : radar::kColorLabel;
+      const uint16_t color = plane.military ? pal().mil_callsign : pal().callsign;
       drawText(plane.callsign, lineX(textWidth(plane.callsign, kTagFont)), y,
                kTagFont, color, textdatum_t::top_left);
       y += s_tag_line_h;
     }
     if (item.show_type) {
       drawText(plane.type, lineX(textWidth(plane.type, kTagFont)), y,
-               kTagFont, radar::kColorTagType, textdatum_t::top_left);
+               kTagFont, pal().tag_type, textdatum_t::top_left);
       y += s_tag_line_h;
     }
     if (item.show_alt) {
       const int tw = textWidth(plane.alt, kTagFont);
       const int arrow = item.climb != 0 ? kTagArrowW : 0;
       const int x = lineX(tw + arrow);
-      drawText(plane.alt, x, y, kTagFont, radar::kColorTagAltitude,
+      drawText(plane.alt, x, y, kTagFont, pal().tag_alt,
                textdatum_t::top_left);
       if (item.climb != 0 && rowsVisible(y, y + s_tag_line_h)) {
-        drawClimbArrow(x + tw + 3, y, item.climb, radar::kColorTagAltitude);
+        drawClimbArrow(x + tw + 3, y, item.climb, pal().tag_alt);
       }
     }
   }
@@ -944,10 +950,31 @@ void renderBand(int band) {
   drawTags();
 }
 
+/**
+ * Software brightness: scale every pixel of the finished strip. Works with or
+ * without the backlight wire (the web mirror is not dimmed).
+ */
+void dimBand(uint32_t level) {  // level 1..31 of 32
+  const size_t pixels = static_cast<size_t>(kW) * kBandH;
+  for (size_t i = 0; i < pixels; ++i) {
+    const uint32_t v = swap16(s_px[i]);
+    const uint32_t rb = (((v & 0xF81Fu) * level) >> 5) & 0xF81Fu;
+    const uint32_t g = (((v & 0x07E0u) * level) >> 5) & 0x07E0u;
+    s_px[i] = swap16(static_cast<uint16_t>(rb | g));
+  }
+}
+
 void presentFrame() {
+  uint32_t level = (static_cast<uint32_t>(services::device::brightness()) * 32u + 127u) / 255u;
+  if (level < 1) {
+    level = 1;
+  }
   tft.startWrite();
   for (int band = 0; band < radar::kBandCount; ++band) {
     renderBand(band);
+    if (level < 32) {
+      dimBand(level);
+    }
     s_band.pushSprite(&tft, 0, band * kBandH);
     tft.waitDMA();  // the strip buffer is reused for the next band
   }

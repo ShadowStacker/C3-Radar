@@ -29,7 +29,7 @@ uint16_t httpPort();
 /** Persist a new port (1..65535). Returns false and changes nothing if invalid. */
 bool setHttpPort(long port);
 
-/** Backlight level 5..255 (needs the display BL pin wired to the backlight GPIO). */
+/** Screen brightness 5..255 (software dimming, plus the backlight if BL is wired). */
 uint8_t brightness();
 void setBrightness(long level);
 
@@ -37,11 +37,9 @@ void setBrightness(long level);
 uint8_t rotation();
 void setRotation(long quarter_turns);
 
-/** Panel colour fixes for modules that ship with a different glass variant. */
+/** Panel colour fix for modules that show a negative image. */
 bool invertColors();
 void setInvertColors(bool on);
-bool swapRedBlue();
-void setSwapRedBlue(bool on);
 
 /** Back to defaults (used by the BOOT long-press reset). */
 void reset();

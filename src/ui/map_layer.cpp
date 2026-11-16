@@ -8,6 +8,7 @@
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
 #include "ui/strip_canvas.h"
+#include "ui/theme.h"
 
 namespace ui::map {
 
@@ -82,21 +83,22 @@ bool layerEnabled(uint8_t layer, uint8_t toggles) {
 }
 
 canvas::LineStyle styleFor(uint8_t layer) {
+  const theme::Palette& pal = theme::palette();
   switch (layer) {
     case kLayerCoast:
-      return {radar::rgb565(80, 150, 220), 26, false};
+      return {pal.coast, 26, false};
     case kLayerLake:
-      return {radar::rgb565(66, 130, 200), 22, false};
+      return {pal.lake, 22, false};
     case kLayerRiver:
-      return {radar::rgb565(50, 105, 172), 22, false};
+      return {pal.river, 22, false};
     case kLayerBorder:
-      return {radar::rgb565(170, 125, 195), 24, true};
+      return {pal.border, 24, true};
     case kLayerTrunk:
-      return {radar::rgb565(135, 105, 62), 20, false};
+      return {pal.trunk, 20, false};
     case kLayerMotorway:
-      return {radar::rgb565(200, 142, 62), 24, false};
+      return {pal.motorway, 24, false};
     default:  // runways
-      return {radar::kColorRunway, 32, false};
+      return {pal.runway, 32, false};
   }
 }
 

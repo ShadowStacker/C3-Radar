@@ -60,25 +60,6 @@ constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
 }
 constexpr uint16_t rgb565(Rgb c) { return rgb565(c.r, c.g, c.b); }
 
-constexpr uint16_t kColorBezel = rgb565(2, 5, 14);
-constexpr uint16_t kColorScope = rgb565(6, 16, 38);
-constexpr uint16_t kColorRing = rgb565(26, 104, 70);
-constexpr uint16_t kColorRingOuter = rgb565(64, 190, 120);
-constexpr uint16_t kColorCross = rgb565(18, 66, 52);
-constexpr uint16_t kColorTick = rgb565(70, 150, 110);
-constexpr uint16_t kColorLabel = rgb565(255, 255, 255);
-constexpr uint16_t kColorCardinalNorth = rgb565(255, 190, 70);
-constexpr uint16_t kColorScale = rgb565(110, 220, 150);
-constexpr uint16_t kColorCenter = rgb565(255, 255, 255);
-constexpr uint16_t kColorTagBack = rgb565(2, 6, 16);
-constexpr uint16_t kColorTagType = rgb565(255, 200, 60);
-constexpr uint16_t kColorTagAltitude = rgb565(110, 205, 255);
-constexpr uint16_t kColorRunway = rgb565(56, 150, 170);
-constexpr uint16_t kColorRunwayLabel = rgb565(120, 215, 235);
-constexpr uint16_t kColorTownMajor = rgb565(190, 200, 218);
-constexpr uint16_t kColorTownMinor = rgb565(128, 142, 168);
-constexpr uint16_t kColorMilitary = rgb565(255, 64, 48);
-constexpr uint16_t kColorBadgeBack = rgb565(120, 16, 12);
-constexpr uint16_t kColorOutline = rgb565(1, 3, 9);
+// Colours live in ui/theme.h (they depend on the selected theme).
 
 }  // namespace ui::radar

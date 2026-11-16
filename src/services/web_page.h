@@ -45,6 +45,10 @@ input[type=range]{width:150px;accent-color:var(--acc)}
 .sw input:checked+span:after{left:23px;background:#fff}
 .sw.mil input:checked+span{background:var(--warn)}
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 12px;margin-top:10px}
+.swatches label{display:flex;align-items:center;gap:8px}
+input[type=color]{width:38px;height:28px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer}
+input[type=file]{max-width:100%;color:var(--dim)}
 #note{min-height:1.4em;color:var(--acc);margin-top:8px}
 #note.err{color:var(--warn)}
 </style></head><body><main>
@@ -87,6 +91,16 @@ input[type=range]{width:150px;accent-color:var(--acc)}
 </div>
 
 <div class="card">
+ <h2>Colours</h2>
+ <div class="row"><label for="theme">Theme</label><select id="theme"></select></div>
+ <div id="custom" style="display:none">
+  <div class="row"><div>Colour aircraft by altitude<small>Off: all aircraft use the Aircraft colour</small></div>
+   <label class="sw"><input type="checkbox" id="calt"><span></span></label></div>
+  <div class="swatches" id="swatches"></div>
+ </div>
+</div>
+
+<div class="card">
  <h2>Location</h2>
  <div class="row"><label for="lat">Latitude</label><input type="number" id="lat" step="0.000001" min="-90" max="90"></div>
  <div class="row"><label for="lon">Longitude</label><input type="number" id="lon" step="0.000001" min="-180" max="180"></div>
@@ -95,14 +109,12 @@ input[type=range]{width:150px;accent-color:var(--acc)}
 
 <div class="card">
  <h2>Screen</h2>
- <div class="row"><div>Brightness<small>Needs the display BL pin on GPIO 5</small></div>
+ <div class="row"><div>Brightness</div>
   <input type="range" id="brightness" min="5" max="255"></div>
  <div class="row"><label for="rotation">Rotation</label>
   <select id="rotation"><option value="0">0&deg;</option><option value="1">90&deg;</option><option value="2">180&deg;</option><option value="3">270&deg;</option></select></div>
  <div class="row"><div>Invert colours<small>If the picture looks like a negative</small></div>
   <label class="sw"><input type="checkbox" data-k="invert"><span></span></label></div>
- <div class="row"><div>Swap red / blue<small>If reds show as blue</small></div>
-  <label class="sw"><input type="checkbox" data-k="swap_rb"><span></span></label></div>
 </div>
 
 <div class="card">
@@ -114,6 +126,13 @@ input[type=range]{width:150px;accent-color:var(--acc)}
  <div class="acts"><button class="pri" id="savename">Save name</button><button class="pri" id="saveport">Change port</button>
   <a class="btn" href="/wifi">Wi-Fi setup</a><a class="btn" href="/info">Device info</a></div>
  <div id="note"></div>
+</div>
+<div class="card">
+ <h2>Firmware update</h2>
+ <div style="color:var(--dim)">Installed version: <span id="ver">&hellip;</span></div>
+ <div class="acts"><input type="file" id="fwfile" accept=".bin"><button class="pri" id="fwgo">Install update</button></div>
+ <div id="fwnote" style="min-height:1.4em;margin-top:8px;color:var(--acc)"></div>
+ <small style="display:block;color:var(--dim)">Choose the release file ending in <b>-update.bin</b>. Wi-Fi, location, settings and the map are kept.</small>
 </div>
 </div>
 </main>
@@ -133,6 +152,7 @@ function fill(s){
   document.title=s.name;$('title').textContent=s.name;
   $('hostinfo').textContent='Address: '+s.host+(s.port===80?'':':'+s.port);
   document.querySelectorAll('input[data-bit]').forEach(c=>c.checked=!!(s.map_layers&+c.dataset.bit));
+  $('ver').textContent=s.version;fillTheme(s);
   const m=s.map;
   $('mapstat').textContent=!m.present?'No map stored on the radar.':
     'Map stored for '+m.lat+', '+m.lon+' ('+Math.max(1,Math.round(m.bytes/1024))+' KB)'+
@@ -200,6 +220,57 @@ $('mapget').onclick=async()=>{
   $('mapget').disabled=false;load();shot(300);
 };
 $('mapdel').onclick=async()=>{await fetch('/api/map/delete',{method:'POST'});mapnote('Map removed');load();shot(300)};
+
+const SLOTS=['Background','Scope','Grid','Compass text','Aircraft','Callsign','Aircraft type','Altitude text',
+  'Airports','Water','Roads','Borders','Town names','Military'];
+const CUSTOM=255;
+SLOTS.forEach((n,i)=>{const l=document.createElement('label');l.innerHTML='<input type="color" data-slot="'+i+'"><span></span>';
+  l.lastChild.textContent=n;$('swatches').appendChild(l)});
+const themeOf=id=>st.themes.find(t=>t.id===id);
+function sendCustom(extra){
+  const list=[...document.querySelectorAll('input[data-slot]')].map(c=>c.value.slice(1)).join(',');
+  return post(Object.assign({custom:list,custom_alt:$('calt').checked?1:0},extra||{})).then(load).then(()=>shot(300));
+}
+function fillTheme(s){
+  const sel=$('theme');
+  if(document.activeElement!==sel){
+    sel.textContent='';
+    s.themes.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;sel.appendChild(o)});
+    sel.value=s.theme;
+  }
+  $('custom').style.display=s.theme===CUSTOM?'':'none';
+  const c=s.themes.find(t=>t.id===CUSTOM);
+  document.querySelectorAll('input[data-slot]').forEach(i=>{if(document.activeElement!==i)i.value=c.colors[+i.dataset.slot]});
+  $('calt').checked=c.alt;
+}
+$('theme').onchange=e=>{
+  const id=+e.target.value;
+  if(id!==CUSTOM||!st){post({theme:id}).then(load).then(()=>shot(300));return}
+  // Start the custom palette from whatever theme was showing.
+  const from=themeOf(st.theme)||themeOf(CUSTOM);
+  document.querySelectorAll('input[data-slot]').forEach(i=>i.value=from.colors[+i.dataset.slot]);
+  $('calt').checked=from.alt;
+  sendCustom({theme:CUSTOM});
+};
+document.querySelectorAll('input[data-slot]').forEach(i=>i.onchange=()=>sendCustom());
+$('calt').onchange=()=>sendCustom();
+
+function fwnote(t,err){const n=$('fwnote');n.textContent=t;n.style.color=err?'var(--warn)':'var(--acc)'}
+$('fwgo').onclick=()=>{
+  const f=$('fwfile').files[0];
+  if(!f){fwnote('Choose the update file first',true);return}
+  const fd=new FormData();fd.append('firmware',f,f.name);
+  const x=new XMLHttpRequest();
+  $('fwgo').disabled=true;clearTimeout(timer);$('live').checked=false;
+  x.upload.onprogress=e=>{if(e.lengthComputable)fwnote('Uploading… '+Math.round(e.loaded*100/e.total)+'%')};
+  x.onerror=()=>{fwnote('Connection lost during the update',true);$('fwgo').disabled=false};
+  x.onload=()=>{
+    let j={};try{j=JSON.parse(x.responseText)}catch(e){}
+    if(j.ok){fwnote('Update installed. The radar is restarting…');setTimeout(()=>location.reload(),15000)}
+    else{fwnote(j.error||'Update failed',true);$('fwgo').disabled=false}
+  };
+  x.open('POST','/api/update');x.send(fd);
+};
 
 /*MAPGEN-BEGIN*/
 // Builds the radar's map file from OpenStreetMap (Overpass API). Everything

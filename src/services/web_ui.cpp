@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Update.h>
 #include <WiFi.h>
 
 #include <cstdlib>
@@ -17,6 +18,7 @@
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
+#include "ui/theme.h"
 
 namespace services::web {
 
@@ -25,6 +27,10 @@ namespace {
 WebServer* s_server = nullptr;
 bool s_restart_needed = false;
 bool s_map_upload_ok = false;
+bool s_update_ok = false;
+bool s_update_running = false;
+bool s_reboot_pending = false;
+const char* s_update_error = "";
 
 constexpr uint32_t kBmpHeaderSize = 14 + 40 + 12;
 constexpr uint32_t kBmpImageSize =
@@ -71,10 +77,27 @@ void handleState() {
     map["offset_km"] = serialized(String(ui::map::centerOffsetKm(), 1));
     map["usable"] = ui::map::centerOffsetKm() <= ui::map::kMaxCenterOffsetKm;
   }
+  doc["theme"] = ui::theme::current();
+  JsonArray themes = doc["themes"].to<JsonArray>();
+  const auto addTheme = [&themes](const ui::theme::ThemeSpec& spec, uint8_t id) {
+    JsonObject t = themes.add<JsonObject>();
+    t["id"] = id;
+    t["name"] = spec.name;
+    t["alt"] = spec.altitude_colors;
+    JsonArray c = t["colors"].to<JsonArray>();
+    for (size_t i = 0; i < ui::theme::kSlotCount; ++i) {
+      char hex[8];
+      snprintf(hex, sizeof(hex), "#%06x", static_cast<unsigned>(spec.rgb[i]));
+      c.add(hex);
+    }
+  };
+  for (size_t i = 0; i < ui::theme::kPresetCount; ++i) {
+    addTheme(ui::theme::kPresets[i], static_cast<uint8_t>(i));
+  }
+  addTheme(ui::theme::custom(), ui::theme::kCustomId);
   doc["brightness"] = device::brightness();
   doc["rotation"] = device::rotation();
   doc["invert"] = device::invertColors();
-  doc["swap_rb"] = device::swapRedBlue();
   doc["aircraft"] = ui::radarDisplayInRangeCount();
   doc["beyond"] = ui::radarDisplayBeyondCount();
   const unsigned long last = adsb::lastUpdateMs();
@@ -149,6 +172,38 @@ void handleSettings() {
     ui::radar::setMilitaryOnly(argBool("mil"));
     refetch = true;
   }
+  if (srv.hasArg("custom")) {
+    // Comma-separated RRGGBB list, one per theme slot.
+    uint32_t rgb[ui::theme::kSlotCount];
+    const String list = srv.arg("custom");
+    size_t count = 0;
+    int start = 0;
+    while (count < ui::theme::kSlotCount && start <= static_cast<int>(list.length())) {
+      int comma = list.indexOf(',', start);
+      if (comma < 0) {
+        comma = list.length();
+      }
+      const String item = list.substring(start, comma);
+      char* end = nullptr;
+      const unsigned long v = strtoul(item.c_str(), &end, 16);
+      if (item.length() != 6 || end == nullptr || *end != '\0') {
+        break;
+      }
+      rgb[count++] = static_cast<uint32_t>(v);
+      start = comma + 1;
+    }
+    if (count != ui::theme::kSlotCount) {
+      sendResult(false, "Colours must be 6-digit hex values");
+      return;
+    }
+    ui::theme::setCustom(rgb, argBool("custom_alt"));
+  }
+  if (srv.hasArg("theme")) {
+    if (!ui::theme::select(static_cast<uint8_t>(srv.arg("theme").toInt()))) {
+      sendResult(false, "Unknown theme");
+      return;
+    }
+  }
   if (srv.hasArg("map_layers")) {
     ui::radar::setMapLayers(static_cast<uint8_t>(srv.arg("map_layers").toInt()));
   }
@@ -175,10 +230,6 @@ void handleSettings() {
   }
   if (srv.hasArg("invert")) {
     device::setInvertColors(argBool("invert"));
-    display_changed = true;
-  }
-  if (srv.hasArg("swap_rb")) {
-    device::setSwapRedBlue(argBool("swap_rb"));
     display_changed = true;
   }
 
@@ -284,6 +335,68 @@ void handleMapUploadDone() {
   sendResult(ok, "The device did not accept the map (too large or damaged)");
 }
 
+/**
+ * Firmware update: the app image is streamed into the spare firmware slot.
+ * Settings, Wi-Fi and the map live elsewhere in flash and are not touched.
+ */
+void handleUpdateChunk() {
+  HTTPUpload& up = s_server->upload();
+  switch (up.status) {
+    case UPLOAD_FILE_START:
+      s_update_ok = false;
+      s_update_running = true;
+      s_update_error = "";
+      break;
+    case UPLOAD_FILE_WRITE:
+      if (up.totalSize == 0) {
+        // First block: make sure this is an app image and not the full
+        // (bootloader + app) image meant for USB flashing, which would brick
+        // the slot. App images carry a descriptor magic at offset 0x20.
+        const bool app_image =
+            up.currentSize >= 0x24 && up.buf[0] == 0xE9 && up.buf[0x20] == 0x32 &&
+            up.buf[0x21] == 0x54 && up.buf[0x22] == 0xCD && up.buf[0x23] == 0xAB;
+        if (!app_image) {
+          s_update_error = "That is not an update file. Use the file ending in -update.bin";
+        } else if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+          s_update_error = "No space for the update";
+        } else {
+          s_update_ok = true;
+        }
+      }
+      if (s_update_ok && Update.write(up.buf, up.currentSize) != up.currentSize) {
+        s_update_ok = false;
+        s_update_error = "Writing the update failed";
+        Update.abort();
+      }
+      break;
+    case UPLOAD_FILE_END:
+      if (s_update_ok && !Update.end(true)) {
+        s_update_ok = false;
+        s_update_error = "The update file is damaged";
+      }
+      s_update_running = false;
+      break;
+    default:  // aborted
+      if (s_update_ok) {
+        Update.abort();
+      }
+      s_update_ok = false;
+      s_update_running = false;
+      s_update_error = "Upload interrupted";
+      break;
+  }
+}
+
+void handleUpdateDone() {
+  const bool ok = s_update_ok;
+  s_update_ok = false;
+  s_update_running = false;
+  sendResult(ok, s_update_error[0] != '\0' ? s_update_error : "Update failed");
+  if (ok) {
+    s_reboot_pending = true;  // restart once this reply has gone out
+  }
+}
+
 void handleMapDelete() {
   mapstore::clear();
   sendResult(true, nullptr);
@@ -300,7 +413,12 @@ void registerRoutes(WebServer& server) {
   server.on("/screen.bmp", HTTP_GET, handleScreen);
   server.on("/api/map", HTTP_POST, handleMapUploadDone, handleMapUploadChunk);
   server.on("/api/map/delete", HTTP_POST, handleMapDelete);
+  server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateChunk);
 }
+
+bool updateInProgress() { return s_update_running; }
+
+bool rebootPending() { return s_reboot_pending; }
 
 bool consumeRestartRequest() {
   const bool needed = s_restart_needed;

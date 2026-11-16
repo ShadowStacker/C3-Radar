@@ -14,4 +14,9 @@ void registerRoutes(WebServer& server);
 /** True once after the port or device name changed: the server must be restarted. */
 bool consumeRestartRequest();
 
+/** True while a firmware upload is being written (pause other network work). */
+bool updateInProgress();
+/** True after a successful firmware upload: restart the device. */
+bool rebootPending();
+
 }  // namespace services::web

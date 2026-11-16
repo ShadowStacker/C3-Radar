@@ -8,7 +8,7 @@ A live aircraft radar for your desk: an **ESP32-C3 Super Mini** and a **2.1" rou
 
 C3-Radar is a port of [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) (made for a 1.28" 240×240 GC9A01) to the larger GC9B72 panel, with redrawn graphics and a web page to control it.
 
-> **Status: beta.** The firmware builds and its drawing code and web page have been tested on a PC, but this release has not yet been confirmed on real hardware. If the screen stays blank or the colours look wrong, see [Troubleshooting](#troubleshooting) and please open an issue.
+> **Status: beta.** It runs on real hardware, but it is young. If something misbehaves, see [Troubleshooting](#troubleshooting) and please open an issue.
 
 ## Features
 
@@ -17,6 +17,8 @@ C3-Radar is a port of [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP
 - **Readable tags** — callsign, type and altitude with a climb/descent arrow. Tags never overlap: in busy airspace, farther aircraft drop to callsign-only or no tag.
 - **Military aircraft** — always drawn red with a ring, plus a **military-only** switch that hides everything else.
 - **Local map** — coastline, lakes, rivers, borders, motorways, main roads, town names and airfields under the radar, each with its own switch. Downloaded once from OpenStreetMap through the web page.
+- **Colour themes** — five built-in themes and a custom palette you can edit colour by colour.
+- **Updates from the web page** — install new firmware over Wi-Fi without losing your settings.
 - **Several radars on one network** — every unit gets its own name and address.
 - **Web page** — a live copy of the screen, range buttons and every setting, from any phone or computer on your network.
 - **Adjustable web server port** — move the web page off port 80 if you need to.
@@ -42,31 +44,44 @@ C3-Radar is a port of [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP
 | DC | GPIO 10 |
 | CS | GPIO 1 |
 | RST (RES) | GPIO 0 |
-| BL (BLK) | GPIO 5 — optional, only needed for the brightness slider |
+| BL (BLK) | GPIO 5 — optional; lets the brightness slider dim the backlight as well as the picture |
 
 Pins are set in [`include/config.h`](include/config.h) if you need a different layout.
 
 ## Install the firmware
 
-The ready-made image is [`firmware/c3-radar-merged.bin`](firmware/c3-radar-merged.bin). It contains everything and is flashed at address **0x0**.
+Each [release](https://github.com/ShadowStacker/C3-Radar/releases) has two files (also in [`firmware/`](firmware/)):
 
-### From a browser (no software to install)
+| File | Use it for |
+|---|---|
+| `…-full.bin` | First install over USB. Flashed at address **0x0**. Erases saved settings. |
+| `…-update.bin` | Later updates from the radar's web page. Keeps everything. |
+
+### First install, from a browser
 
 1. Open [esptool-js](https://espressif.github.io/esptool-js/) in Chrome or Edge.
 2. Put the board in download mode: hold **BOOT**, tap **RESET**, release **BOOT**.
 3. Click **Connect** and pick the board's serial port.
-4. Set the flash address to `0x0`, choose `c3-radar-merged.bin`, click **Program**.
+4. Set the flash address to `0x0`, choose the `-full.bin` file, click **Program**.
 5. Tap **RESET** when it finishes.
 
-### From the command line
+### First install, from the command line
 
 ```bash
 pip install esptool
 ```
 
 ```bash
-esptool.py --chip esp32c3 write_flash 0x0 firmware/c3-radar-merged.bin
+esptool.py --chip esp32c3 write_flash 0x0 firmware/c3-radar-full.bin
 ```
+
+### Updating later
+
+Open the radar's web page, scroll to **Firmware update**, choose the new `-update.bin` file and click **Install update**. The radar restarts on the new version with Wi-Fi, location, name, theme, settings and map all intact.
+
+Flashing the `-full.bin` again over USB also works, but it wipes Wi-Fi and settings, so you would go through setup again.
+
+Versions before 0.11 had no update slot. Moving from one of those needs one last USB flash.
 
 ## First-time setup
 
@@ -120,7 +135,9 @@ Once the radar is on your network, open the address shown on the **Connected** s
 | Aircraft | Military-only, runways and miles/kilometres switches |
 | Map | Download or remove the map, and a switch for each map layer |
 | Location | Latitude and longitude of the radar centre |
-| Screen | Brightness, rotation, and two colour fixes (invert, swap red/blue) |
+| Colours | Theme picker and the custom colour editor |
+| Screen | Brightness, rotation and an invert-colours fix |
+| Firmware update | Shows the installed version and installs a new one |
 | Network | Device name, web server port, plus links to Wi-Fi setup and device info |
 
 Changes apply immediately and are remembered after a power cut.
@@ -145,7 +162,23 @@ Changes apply immediately and are remembered after a power cut.
 | Town names | Cities and towns; villages too at the 5 and 10 km ranges | Grey |
 | Airfields | Every runway and airfield code in the area, not just large airports | Teal |
 
-The map is kept in the device's flash memory and survives power cuts and firmware updates. If you move the radar more than 30 km, download the map again. Busy areas are simplified automatically to fit the roughly 0.9 MB of storage. Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+The map is kept in the device's flash memory and survives power cuts and firmware updates. If you move the radar more than 30 km, download the map again. Busy areas are simplified automatically to fit the roughly 0.4 MB of storage. Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+
+### Colour themes
+
+![The five built-in themes](docs/images/themes.png)
+
+Pick a theme under **Colours**: Night navy (default), Classic green, Amber, Night red or Daylight. Choose **Custom** to edit your own; it starts as a copy of whichever theme was showing. Each colour applies as soon as you pick it:
+
+| Colour | Used for |
+|---|---|
+| Background, Scope | Outside and inside the outer ring |
+| Grid | Rings, crosshair, ticks and the range label |
+| Compass text | N / E / S / W and the centre mark |
+| Aircraft | All aircraft, when **Colour aircraft by altitude** is off |
+| Callsign, Aircraft type, Altitude text | The three tag lines |
+| Airports, Water, Roads, Borders, Town names | Map layers |
+| Military | Military aircraft and the `MIL ONLY` badge |
 
 ### More than one radar
 
@@ -171,13 +204,13 @@ adsb.fi marks aircraft that its database lists as military. With the switch on, 
 |---|---|
 | Screen stays black | Check VCC is on 3V3 and every wire against the table. If BL is wired, check it goes to GPIO 5; if not, leave it unconnected. |
 | Colours look like a photo negative | Web page → Screen → **Invert colours** |
-| Red and blue are swapped | Web page → Screen → **Swap red / blue** |
+| Red and blue are swapped | Your panel uses the other colour order: set `kDisplayRgbOrder` to `false` in `include/config.h` and rebuild |
 | Picture is sideways or upside down | Web page → Screen → **Rotation** |
 | The `.local` address doesn't open | Use the IP address from the **Connected** screen or your router's device list; add `:port` if you changed the port |
 | No aircraft | Check the location is right, try the 25 km range, and make sure military-only is off |
 | `NO DATA` badge | The device can't reach adsb.fi; check your internet connection |
 | Stuck on the yellow **Could not connect** screen | Hold **BOOT** for 3 seconds and run setup again |
-| Brightness slider does nothing | The display's BL pin must be wired to GPIO 5 |
+| Firmware update says "not an update file" | Choose the file ending in `-update.bin`, not `-full.bin` |
 
 For more detail, connect over USB and open a serial monitor at 115200 baud.
 
@@ -193,7 +226,7 @@ pio run -e supermini -t upload
 pio device monitor
 ```
 
-To make the single-file image for browser flashing (written to `.pio/build/supermini/firmware-merged.bin`):
+To make the full image for USB flashing (written to `.pio/build/supermini/firmware-merged.bin`; the update image is `firmware.bin` next to it):
 
 ```bash
 pio run -e supermini -t merge
@@ -206,7 +239,9 @@ Pushing a tag such as `v1.0.0` makes GitHub Actions build the firmware and attac
 | Path | Contents |
 |---|---|
 | `include/config.h` | Pins, default location, timings |
-| `include/ui/radar_theme.h` | Layout and colours |
+| `include/ui/radar_theme.h` | Layout |
+| `src/ui/theme.cpp` | Colour themes |
+| `partitions/plane_radar.csv` | Flash layout: two firmware slots and map storage |
 | `src/ui/radar_display.cpp` | Radar drawing |
 | `src/ui/map_layer.cpp`, `src/services/map_store.cpp` | Map drawing and flash storage |
 | `src/services/web_ui.cpp`, `web_page.h` | Web page and its API |
@@ -256,10 +291,11 @@ The arguments are: font folder, output folder, latitude, longitude, range index 
 | Request | Purpose |
 |---|---|
 | `GET /api/state` | Current settings and aircraft counts as JSON |
-| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `map_layers`, `name`, `brightness`, `rotation`, `invert`, `swap_rb`, `port` |
+| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `map_layers`, `name`, `theme`, `custom`, `custom_alt`, `brightness`, `rotation`, `invert`, `port` |
 | `GET /screen.bmp` | The current screen as a 360×360 BMP |
 | `POST /api/map` | Upload a map file (multipart form); the format is described in `include/ui/map_layer.h` |
 | `POST /api/map/delete` | Remove the stored map |
+| `POST /api/update` | Install an update image (multipart form) |
 
 The web page has no password; anyone on your network can open it.
 

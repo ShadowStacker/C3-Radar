@@ -19,7 +19,6 @@ constexpr char kKeyName[] = "name";
 constexpr char kKeyBright[] = "bright";
 constexpr char kKeyRotation[] = "rot";
 constexpr char kKeyInvert[] = "invert";
-constexpr char kKeySwapRb[] = "swapRB";
 constexpr uint8_t kMinBrightness = 5;
 
 char s_name[kMaxNameLen + 1] = "";
@@ -86,7 +85,6 @@ uint16_t s_port = config::kDefaultHttpPort;
 uint8_t s_brightness = 255;
 uint8_t s_rotation = 0;
 bool s_invert = config::kDisplayInvert;
-bool s_swap_rb = config::kDisplayRgbOrder;
 
 template <typename Fn>
 void withPrefs(Fn fn) {
@@ -123,7 +121,6 @@ void init() {
   s_brightness = bright < kMinBrightness ? kMinBrightness : bright;
   s_rotation = prefs.getUChar(kKeyRotation, 0) & 3;
   s_invert = prefs.getBool(kKeyInvert, config::kDisplayInvert);
-  s_swap_rb = prefs.getBool(kKeySwapRb, config::kDisplayRgbOrder);
   prefs.end();
 }
 
@@ -193,22 +190,11 @@ void setInvertColors(bool on) {
   withPrefs([](Preferences& p) { p.putBool(kKeyInvert, s_invert); });
 }
 
-bool swapRedBlue() { return s_swap_rb; }
-
-void setSwapRedBlue(bool on) {
-  if (on == s_swap_rb) {
-    return;
-  }
-  s_swap_rb = on;
-  withPrefs([](Preferences& p) { p.putBool(kKeySwapRb, s_swap_rb); });
-}
-
 void reset() {
   s_port = config::kDefaultHttpPort;
   s_brightness = 255;
   s_rotation = 0;
   s_invert = config::kDisplayInvert;
-  s_swap_rb = config::kDisplayRgbOrder;
   withPrefs([](Preferences& p) { p.clear(); });
   applyName("");
 }
