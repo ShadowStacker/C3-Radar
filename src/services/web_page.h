@@ -122,8 +122,9 @@ input[type=file]{max-width:100%;color:var(--dim)}
 
 <div class="card">
  <h2>Location</h2>
- <div class="row"><label for="lat">Latitude</label><input type="number" id="lat" step="0.000001" min="-90" max="90"></div>
- <div class="row"><label for="lon">Longitude</label><input type="number" id="lon" step="0.000001" min="-180" max="180"></div>
+ <div class="row"><label for="lat">Latitude</label><input type="text" inputmode="decimal" id="lat" autocomplete="off" placeholder="44.2541"></div>
+ <div class="row"><label for="lon">Longitude</label><input type="text" inputmode="decimal" id="lon" autocomplete="off" placeholder="-121.1500"></div>
+ <small style="display:block;color:var(--dim);margin-top:6px">Tip: paste a pair copied from a map, like <b>44.2541, -121.1500</b>, into the Latitude box.</small>
  <div class="acts"><button class="pri" id="saveloc">Move radar here</button></div>
  <div id="locnote" style="min-height:1.4em;margin:6px 0;color:var(--acc)"></div>
  <h2 style="margin-top:6px">Saved locations</h2>
@@ -171,7 +172,7 @@ let st=null,timer=0;
 function note(t,err){const n=$('note');n.textContent=t;n.className=err?'err':''}
 async function post(o){
   const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body:new URLSearchParams(o)});
+    body:new URLSearchParams(Object.assign({v:1},o))});
   const j=await r.json();
   if(!j.ok)note(j.error||'Not saved',true);
   return j;
@@ -252,10 +253,29 @@ async function setLocation(o,msg){
   dirty.delete('lat');dirty.delete('lon');locnote(msg||'');
   await load();shot(300);return j;
 }
-$('saveloc').onclick=()=>setLocation({lat:$('lat').value,lon:$('lon').value},'Radar moved');
+// Reads the two boxes into "lat,lon". Tolerates what people paste from maps:
+// both numbers in one box, spaces, a trailing comma, a degree sign, a decimal comma.
+function readPos(){
+  const num=t=>{t=t.trim().replace(/[\u00b0,;]+$/,'').trim();if(/^[-+]?\d+,\d+$/.test(t))t=t.replace(',','.');
+    return /^[-+]?(\d+\.?\d*|\.\d+)$/.test(t)?t:null};
+  let a=$('lat').value,b=$('lon').value;
+  const pair=a.trim().match(/^([-+]?[\d.]+)\s*\u00b0?\s*(?:[,;]\s+|\s+|;|,(?=[-+]?\d*\.))\s*([-+]?[\d.]+)\s*\u00b0?$/);
+  if(pair){a=pair[1];b=pair[2]}
+  const lat=num(a),lon=num(b);
+  if(lat===null||Math.abs(+lat)>90){locnote('Latitude should be a number from -90 to 90, like 44.2541',true);return null}
+  if(lon===null||Math.abs(+lon)>180){locnote('Longitude should be a number from -180 to 180, like -121.1500',true);return null}
+  $('lat').value=lat;$('lon').value=lon;
+  return lat+','+lon;
+}
+$('lat').addEventListener('paste',()=>setTimeout(()=>{
+  const m=$('lat').value.trim().match(/^([-+]?[\d.]+)\s*\u00b0?\s*(?:[,;]\s+|\s+|;|,(?=[-+]?\d*\.))\s*([-+]?[\d.]+)\s*\u00b0?$/);
+  if(m){$('lat').value=m[1];$('lon').value=m[2];dirty.add('lat');dirty.add('lon')}
+},0));
+$('saveloc').onclick=()=>{const pos=readPos();if(pos)setLocation({pos},'Radar moved')};
 for(const k of['lat','lon'])$(k).addEventListener('keydown',e=>{if(e.key==='Enter')$('saveloc').click()});
 $('padd').onclick=async()=>{
-  const j=await setLocation({lat:$('lat').value,lon:$('lon').value,place_add:$('pname').value},'Saved to the list');
+  const pos=readPos();if(!pos)return;
+  const j=await setLocation({pos,place_add:$('pname').value},'Saved to the list');
   if(j.ok)$('pname').value='';
 };
 function fillPlaces(s){
@@ -285,7 +305,7 @@ scope.onpointerup=e=>{
   let lon=+st.lon-dx*km/(111*Math.cos(+st.lat*Math.PI/180));
   lon=((lon+540)%360)-180;
   panning=true;
-  setLocation({lat:lat.toFixed(6),lon:lon.toFixed(6)},'Radar moved');
+  setLocation({pos:lat.toFixed(6)+','+lon.toFixed(6)},'Radar moved');
 };
 
 // After a port or name change the web server restarts: follow it there.

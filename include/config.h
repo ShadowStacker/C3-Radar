@@ -7,7 +7,7 @@
 #include <sdkconfig.h>  // CONFIG_IDF_TARGET_* (absent in the PC preview build)
 #endif
 
-#define PLANE_RADAR_VERSION "0.14.1"
+#define PLANE_RADAR_VERSION "0.14.2"
 
 namespace config {
 

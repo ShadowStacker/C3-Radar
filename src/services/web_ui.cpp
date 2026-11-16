@@ -194,11 +194,19 @@ void handleSettings() {
   bool refetch = false;
   bool display_changed = false;
 
-  if (srv.hasArg("lat") || srv.hasArg("lon")) {
+  if (srv.hasArg("pos") || srv.hasArg("lat") || srv.hasArg("lon")) {
+    // "pos" carries both numbers in one field ("44.33,-121.49"); separate
+    // lat / lon fields are still accepted.
+    String lat_text = srv.arg("lat");
+    String lon_text = srv.arg("lon");
+    if (srv.hasArg("pos")) {
+      const String pos = srv.arg("pos");
+      const int comma = pos.indexOf(',');
+      lat_text = comma < 0 ? pos : pos.substring(0, comma);
+      lon_text = comma < 0 ? String() : pos.substring(comma + 1);
+    }
     double lat = 0.0;
     double lon = 0.0;
-    const String lat_text = srv.arg("lat");
-    const String lon_text = srv.arg("lon");
     if (!location::parseNumber(lat_text.c_str(), &lat) ||
         !location::parseNumber(lon_text.c_str(), &lon) || !location::save(lat, lon)) {
       // Echo what arrived, so a bad value can be told from a bad request.
