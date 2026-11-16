@@ -22,7 +22,12 @@ h1{font-size:20px;margin:0}
 .stack{display:grid;gap:16px}
 .scope{position:relative;width:100%;max-width:360px;aspect-ratio:1;margin:4px auto 12px;border-radius:50%;
  background:#000;box-shadow:0 0 0 6px #1a2233,0 0 0 8px #2c3850;overflow:hidden}
-.scope img{width:100%;height:100%;display:block;border-radius:50%;image-rendering:auto}
+.scope{touch-action:none;cursor:grab;user-select:none}
+.chip{display:inline-flex;margin:0 6px 6px 0}
+.chip button{border-radius:9px 0 0 9px;padding:6px 10px}
+.chip button+button{border-radius:0 9px 9px 0;border-left:0;padding:6px 9px;color:var(--dim)}
+.chip.on button:first-child{background:var(--acc);border-color:var(--acc);color:#04130a;font-weight:600}
+.scope img{pointer-events:none;width:100%;height:100%;display:block;border-radius:50%;image-rendering:auto}
 .scope .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
  padding:18%;color:var(--dim)}
 .seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -57,6 +62,7 @@ input[type=file]{max-width:100%;color:var(--dim)}
 <div class="card">
  <h2>Display</h2>
  <div class="scope"><img id="scr" alt="Live copy of the radar display"><div class="msg" id="scrmsg">Loading&hellip;</div></div>
+ <div style="text-align:center;color:var(--dim);font-size:13px;margin:-4px 0 10px">Drag the picture to move the radar&rsquo;s centre</div>
  <div class="seg" id="ranges"></div>
  <div class="row" style="margin-top:8px"><div>Live view<small>Copies the screen every couple of seconds</small></div>
   <label class="sw"><input type="checkbox" id="live" checked><span></span></label></div>
@@ -117,7 +123,12 @@ input[type=file]{max-width:100%;color:var(--dim)}
  <h2>Location</h2>
  <div class="row"><label for="lat">Latitude</label><input type="number" id="lat" step="0.000001" min="-90" max="90"></div>
  <div class="row"><label for="lon">Longitude</label><input type="number" id="lon" step="0.000001" min="-180" max="180"></div>
- <div class="acts"><button class="pri" id="saveloc">Save location</button></div>
+ <div class="acts"><button class="pri" id="saveloc">Move radar here</button></div>
+ <div id="locnote" style="min-height:1.4em;margin:6px 0;color:var(--acc)"></div>
+ <h2 style="margin-top:6px">Saved locations</h2>
+ <div id="places" style="color:var(--dim)"></div>
+ <div class="acts"><input type="text" id="pname" maxlength="19" placeholder="Name for this spot" style="flex:1;min-width:120px">
+  <button id="padd">Save to list</button></div>
 </div>
 
 <div class="card">
@@ -178,10 +189,11 @@ function fill(s){
     d.style.cssText='position:absolute;top:2px;left:'+pct+'%;transform:translateX('+(i===0?'0':i===k.length-1?'-100%':'-50%')+')';
     tk.appendChild(d)});
   const m=s.map;
-  $('mapstat').textContent=!m.present?'No map stored on the radar.':
-    'Map stored for '+m.lat+', '+m.lon+' ('+Math.max(1,Math.round(m.bytes/1024))+' KB)'+
-    (m.usable?(m.offset_km>5?' \u2014 '+m.offset_km+' km from the current location':''):
-     ' \u2014 too far from the current location to show; download it again');
+  const kb=n=>Math.max(1,Math.round(n/1024))+' KB',others=m.count-(m.present?1:0);
+  $('mapstat').textContent=(m.present?'Map for this location: '+kb(m.bytes)+(m.offset_km>5?' (made '+m.offset_km+' km away)':''):
+    'No map for this location')+(others>0?' · '+others+' more stored for other locations':'')+
+    ' · '+kb(m.free)+' free of '+kb(m.capacity);
+  fillPlaces(s);
   $('mapdel').style.display=m.present?'':'none';
   const age=s.data_age_s<0?'waiting for data':(s.data_age_s>30?'no data for '+s.data_age_s+' s':'live');
   $('stat').textContent=s.aircraft+' in range · '+s.beyond+' beyond · '+age+(s.mil?' · military only':'');
@@ -189,14 +201,14 @@ function fill(s){
   s.ranges.forEach((label,i)=>{const b=document.createElement('button');b.textContent=label;
     if(i===s.range)b.className='on';b.onclick=()=>post({range:i}).then(load).then(()=>shot(300));box.appendChild(b)});
   document.querySelectorAll('input[data-k]').forEach(c=>c.checked=!!s[c.dataset.k]);
-  for(const k of['lat','lon','port','brightness','rotation','name'])if(document.activeElement!==$(k))$(k).value=s[k];
+  for(const k of['lat','lon','port','brightness','rotation','name'])if(!dirty.has(k)&&document.activeElement!==$(k))$(k).value=s[k];
 }
 async function load(){try{fill(await(await fetch('/api/state')).json())}catch(e){$('stat').textContent='device not responding'}}
 function shot(delay){
   clearTimeout(timer);
   timer=setTimeout(()=>{if($('live').checked&&!document.hidden)$('scr').src='/screen.bmp?t='+Date.now()},delay);
 }
-$('scr').onload=()=>{$('scrmsg').style.display='none';$('scr').style.visibility='visible';shot(1500)};
+$('scr').onload=()=>{if(panning){panning=false;$('scr').style.transform=''}$('scrmsg').style.display='none';$('scr').style.visibility='visible';shot(1500)};
 $('scr').onerror=()=>{$('scr').style.visibility='hidden';$('scrmsg').style.display='flex';
   $('scrmsg').textContent='The radar is not on screen right now';shot(4000)};
 $('live').onchange=()=>shot(0);
@@ -205,8 +217,53 @@ document.querySelectorAll('input[data-k]').forEach(c=>c.onchange=()=>
   post({[c.dataset.k]:c.checked?1:0}).then(load).then(()=>shot(300)));
 $('brightness').onchange=e=>post({brightness:e.target.value});
 $('rotation').onchange=e=>post({rotation:e.target.value});
-$('saveloc').onclick=()=>post({lat:$('lat').value,lon:$('lon').value}).then(j=>{
-  if(j.ok)note('Location saved');load();shot(300)});
+// Boxes the user has typed in but not saved yet: the 5-second refresh must
+// not overwrite them.
+const dirty=new Set();
+for(const k of['lat','lon','port','name'])$(k).addEventListener('input',()=>dirty.add(k));
+function locnote(t,err){const n=$('locnote');n.textContent=t;n.style.color=err?'var(--warn)':'var(--acc)'}
+async function setLocation(o,msg){
+  const j=await post(o);
+  if(!j.ok){locnote(j.error||'Not saved',true);return j}
+  dirty.delete('lat');dirty.delete('lon');locnote(msg||'');
+  await load();shot(300);return j;
+}
+$('saveloc').onclick=()=>setLocation({lat:$('lat').value,lon:$('lon').value},'Radar moved');
+for(const k of['lat','lon'])$(k).addEventListener('keydown',e=>{if(e.key==='Enter')$('saveloc').click()});
+$('padd').onclick=async()=>{
+  const j=await setLocation({lat:$('lat').value,lon:$('lon').value,place_add:$('pname').value},'Saved to the list');
+  if(j.ok)$('pname').value='';
+};
+function fillPlaces(s){
+  const box=$('places');box.textContent='';
+  if(!s.places.length){box.textContent='No saved locations yet.';return}
+  s.places.forEach((p,i)=>{
+    const w=document.createElement('span');w.className='chip'+(p.active?' on':'');
+    const go=document.createElement('button');go.textContent=p.name+(p.map?' · map':'');
+    go.title=p.lat+', '+p.lon;go.onclick=()=>setLocation({place_go:i},'Radar moved to '+p.name);
+    const del=document.createElement('button');del.textContent='×';del.title='Remove '+p.name;
+    del.onclick=()=>post({place_del:i}).then(load);
+    w.append(go,del);box.appendChild(w);
+  });
+}
+// Drag the live picture to move the radar's centre.
+const scope=document.querySelector('.scope');let drag=null,panning=false;
+scope.onpointerdown=e=>{if(!st||e.button>0)return;drag={x:e.clientX,y:e.clientY};scope.setPointerCapture(e.pointerId);clearTimeout(timer)};
+scope.onpointermove=e=>{if(drag)$('scr').style.transform='translate('+(e.clientX-drag.x)+'px,'+(e.clientY-drag.y)+'px)'};
+scope.onpointercancel=()=>{drag=null;$('scr').style.transform='';shot(0)};
+scope.onpointerup=e=>{
+  if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag=null;
+  if(Math.hypot(dx,dy)<5){$('scr').style.transform='';shot(0);return}
+  // Screen pixels -> kilometres at the current range -> degrees.
+  const km=st.outer_km/st.ring_px*360/scope.clientWidth;
+  const lat=Math.max(-89.9,Math.min(89.9,+st.lat+dy*km/111));
+  let lon=+st.lon-dx*km/(111*Math.cos(+st.lat*Math.PI/180));
+  lon=((lon+540)%360)-180;
+  panning=true;
+  setLocation({lat:lat.toFixed(6),lon:lon.toFixed(6)},'Radar moved');
+};
+
 // After a port or name change the web server restarts: follow it there.
 function follow(j,msg){
   const h=location.hostname.endsWith('.local')?j.host:location.hostname;
@@ -217,11 +274,13 @@ $('saveport').onclick=async()=>{
   const p=$('port').value;
   if(st&&+p===st.port){note('Already on port '+p);return}
   const j=await post({port:p});
+  if(j.ok)dirty.delete('port');
   if(j.ok)follow(j,'Web server is restarting on port '+p+'\u2026');
 };
 $('savename').onclick=async()=>{
   const j=await post({name:$('name').value});
   if(!j.ok)return;
+  dirty.delete('name');
   if(st&&j.host!==st.host)follow(j,'Saved. New address: '+j.host);
   else{note('Name saved');load()}
 };
@@ -238,7 +297,7 @@ $('mapget').onclick=async()=>{
   if(!st)return;
   $('mapget').disabled=true;
   try{
-    const r=await buildMap(+st.lat,+st.lon,(st.map.capacity||655360)-8192,mapnote);
+    const r=await buildMap(+st.lat,+st.lon,Math.max(4096,(st.map.room||262144)-4096),mapnote);
     mapnote('Sending '+Math.round(r.blob.length/1024)+' KB to the radar\u2026');
     const fd=new FormData();fd.append('map',new Blob([r.blob]),'map.bin');
     const j=await(await fetch('/api/map',{method:'POST',body:fd})).json();

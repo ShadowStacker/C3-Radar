@@ -61,7 +61,10 @@ struct Info {
 
 uint32_t crc32(const uint8_t* data, size_t len);
 
-/** Validate `blob` (magic, size, checksum) and start using it. */
+/** Check a blob (magic, size, checksum, record structure) without using it. */
+bool validate(const uint8_t* blob, size_t max_len, Info* out);
+
+/** Validate `blob` and start using it. */
 bool attach(const uint8_t* blob, size_t max_len);
 void detach();
 const Info& info();

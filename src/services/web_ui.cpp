@@ -5,6 +5,7 @@
 #include <Update.h>
 #include <WiFi.h>
 
+#include <cmath>
 #include <cstdlib>
 
 #include "config.h"
@@ -80,12 +81,32 @@ void handleState() {
   const ui::map::Info& info = ui::map::info();
   map["present"] = info.valid;
   map["capacity"] = mapstore::capacity();
+  map["free"] = mapstore::freeBytes();
+  map["room"] = mapstore::roomForCurrentLocation();
+  map["count"] = mapstore::count();
   if (info.valid) {
     map["lat"] = serialized(String(info.lat, 4));
     map["lon"] = serialized(String(info.lon, 4));
     map["bytes"] = info.bytes;
     map["offset_km"] = serialized(String(ui::map::centerOffsetKm(), 1));
-    map["usable"] = ui::map::centerOffsetKm() <= ui::map::kMaxCenterOffsetKm;
+  }
+  doc["outer_km"] = serialized(String(ui::radar::rangeCurrent().outer_km, 3));
+  doc["ring_px"] = ui::radar::kGridOuterRadius;
+  JsonArray places = doc["places"].to<JsonArray>();
+  const int active_place = location::activePlace();
+  for (size_t i = 0; i < location::placeCount(); ++i) {
+    const location::Place& pl = location::place(i);
+    JsonObject o = places.add<JsonObject>();
+    o["name"] = pl.name;
+    o["lat"] = serialized(String(pl.lat, 5));
+    o["lon"] = serialized(String(pl.lon, 5));
+    o["active"] = static_cast<int>(i) == active_place;
+    bool has_map = false;
+    for (size_t m = 0; m < mapstore::count() && !has_map; ++m) {
+      const mapstore::Entry& e = mapstore::entry(m);
+      has_map = fabs(e.lat - pl.lat) < 0.05 && fabs(e.lon - pl.lon) < 0.07;
+    }
+    o["map"] = has_map;
   }
   doc["theme"] = ui::theme::current();
   JsonArray themes = doc["themes"].to<JsonArray>();
@@ -161,6 +182,28 @@ void handleSettings() {
       return;
     }
     refetch = true;
+  }
+  if (srv.hasArg("place_go")) {
+    if (!location::selectPlace(static_cast<size_t>(srv.arg("place_go").toInt()))) {
+      sendResult(false, "Unknown location");
+      return;
+    }
+    refetch = true;
+  }
+  if (srv.hasArg("place_add")) {
+    // Saves the radar's current centre (after any lat/lon in this request).
+    if (!location::addPlace(srv.arg("place_add").c_str(), location::lat(), location::lon())) {
+      sendResult(false, location::placeCount() >= location::kMaxPlaces
+                            ? "The list is full (8 locations). Remove one first"
+                            : "Give the location a name");
+      return;
+    }
+  }
+  if (srv.hasArg("place_del")) {
+    location::removePlace(static_cast<size_t>(srv.arg("place_del").toInt()));
+  }
+  if (refetch) {
+    mapstore::selectForLocation();
   }
   if (srv.hasArg("range")) {
     const long idx = srv.arg("range").toInt();
@@ -337,7 +380,7 @@ void handleMapUploadChunk() {
       break;
     default:  // aborted
       s_map_upload_ok = false;
-      mapstore::clear();
+      mapstore::uploadEnd();  // discards the partial map
       break;
   }
 }
@@ -410,9 +453,12 @@ void handleUpdateDone() {
   }
 }
 
+/** Removes the map in use (or map number `i` if given). */
 void handleMapDelete() {
-  mapstore::clear();
-  sendResult(true, nullptr);
+  const int index =
+      s_server->hasArg("i") ? static_cast<int>(s_server->arg("i").toInt()) : mapstore::activeIndex();
+  const bool ok = index >= 0 && mapstore::remove(static_cast<size_t>(index));
+  sendResult(ok, "No map to remove");
 }
 
 }  // namespace

@@ -120,6 +120,16 @@ void loop() {
   handleBootButton();
   wifiLoop();
 
+  // Wherever the location was changed from (web page, setup form, reset),
+  // switch to the stored map for the new spot.
+  static double map_lat = 1000.0;
+  static double map_lon = 1000.0;
+  if (map_lat != services::location::lat() || map_lon != services::location::lon()) {
+    map_lat = services::location::lat();
+    map_lon = services::location::lon();
+    services::mapstore::selectForLocation();
+  }
+
   if (services::web::rebootPending()) {
     Serial.println("Firmware updated - restarting");
     delay(400);  // let the browser receive the reply

@@ -131,16 +131,22 @@ Once the radar is on your network, open the address shown on the **Connected** s
 
 | Section | What it does |
 |---|---|
-| Display | Live copy of the screen, refreshed about every 2 seconds, and the range buttons |
+| Display | Live copy of the screen, refreshed about every 2 seconds, and the range buttons. Drag the picture to move the radar's centre. |
 | Aircraft | Military-only, runways and miles/kilometres switches; switches for each tag line (callsign, type, altitude), the speed line and the trail; and a key to the altitude colours |
 | Map | Download or remove the map, and a switch for each map layer |
-| Location | Latitude and longitude of the radar centre |
+| Location | Latitude and longitude of the radar centre, and your list of saved locations |
 | Colours | Theme picker and the custom colour editor |
 | Screen | Brightness, rotation and an invert-colours fix |
 | Firmware update | Shows the installed version and installs a new one |
 | Network | Device name, web server port, plus links to Wi-Fi setup and device info |
 
 Changes apply immediately and are remembered after a power cut.
+
+### Saved locations
+
+Under **Location** you can keep up to eight named spots. Type a name and click **Save to list** to add wherever the radar is centred now (or the coordinates in the boxes). Click a name to jump the radar there; click **×** to remove it. A location marked "· map" has its own stored map.
+
+You can also drag the live picture with the mouse or a finger: the radar's centre moves by the same distance, at the current range.
 
 ### The map
 
@@ -162,7 +168,7 @@ Changes apply immediately and are remembered after a power cut.
 | Town names | Cities and towns; villages too at the 5 and 10 km ranges | Grey |
 | Airfields | Every runway and airfield code in the area, not just large airports | Teal |
 
-The map is kept in the device's flash memory and survives power cuts and firmware updates. If you move the radar more than 30 km, download the map again. Busy areas are simplified automatically to fit the roughly 0.4 MB of storage. Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+The map is kept in the device's flash memory and survives power cuts and firmware updates. The radar keeps up to eight maps, one per area, and automatically uses the one nearest its current centre (within 30 km). They share about 0.45 MB of storage; the Map section shows how much is free. A new map is simplified automatically to fit the space that is left, so if a busy area comes out too coarse, remove a map you no longer need and download it again. Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 
 ### Colour themes
 
@@ -291,10 +297,10 @@ The arguments are: font folder, output folder, latitude, longitude, range index 
 | Request | Purpose |
 |---|---|
 | `GET /api/state` | Current settings and aircraft counts as JSON |
-| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `ac_show`, `map_layers`, `name`, `theme`, `custom`, `custom_alt`, `brightness`, `rotation`, `invert`, `port` |
+| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `place_add`, `place_go`, `place_del`, `mil`, `miles`, `runways`, `ac_show`, `map_layers`, `name`, `theme`, `custom`, `custom_alt`, `brightness`, `rotation`, `invert`, `port` |
 | `GET /screen.bmp` | The current screen as a 360×360 BMP |
 | `POST /api/map` | Upload a map file (multipart form); the format is described in `include/ui/map_layer.h` |
-| `POST /api/map/delete` | Remove the stored map |
+| `POST /api/map/delete` | Remove the map in use (or map number `i`) |
 | `POST /api/update` | Install an update image (multipart form) |
 
 The web page has no password; anyone on your network can open it.

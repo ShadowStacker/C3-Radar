@@ -119,8 +119,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
   return ~crc;
 }
 
-bool attach(const uint8_t* blob, size_t max_len) {
-  detach();
+bool validate(const uint8_t* blob, size_t max_len, Info* out) {
   if (blob == nullptr || max_len < kHeaderSize || memcmp(blob, "C3MP", 4) != 0 ||
       blob[4] != kVersion) {
     return false;
@@ -158,13 +157,27 @@ bool attach(const uint8_t* blob, size_t max_len) {
     off += size;
   }
 
+  if (out != nullptr) {
+    out->valid = true;
+    out->lat = static_cast<int32_t>(rd32(blob + 16)) * 1e-7;
+    out->lon = static_cast<int32_t>(rd32(blob + 20)) * 1e-7;
+    out->bytes = total;
+  }
+  return true;
+}
+
+bool attach(const uint8_t* blob, size_t max_len) {
+  detach();
+  Info info;
+  if (!validate(blob, max_len, &info)) {
+    return false;
+  }
+  const uint32_t total = info.bytes;
+  const uint32_t line_bytes = rd32(blob + 24);
   s_blob = blob;
   s_total = total;
   s_line_bytes = line_bytes;
-  s_info.valid = true;
-  s_info.lat = static_cast<int32_t>(rd32(blob + 16)) * 1e-7;
-  s_info.lon = static_cast<int32_t>(rd32(blob + 20)) * 1e-7;
-  s_info.bytes = total;
+  s_info = info;
   ++s_generation;
   return true;
 }
