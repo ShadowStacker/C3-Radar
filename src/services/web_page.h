@@ -57,7 +57,8 @@ input[type=file]{max-width:100%;color:var(--dim)}
 #note{min-height:1.4em;color:var(--acc);margin-top:8px}
 #note.err{color:var(--warn)}
 </style></head><body><main>
-<header><h1 id="title">Plane Radar</h1><span id="stat">connecting&hellip;</span></header>
+<header><h1 id="title">Plane Radar</h1><span id="stat">connecting&hellip;</span>
+<div id="alert" style="display:none;flex-basis:100%;background:#5a0d0a;border:1px solid var(--warn);border-radius:10px;padding:8px 12px;font-weight:600"></div></header>
 
 <div class="card">
  <h2>Display</h2>
@@ -152,6 +153,10 @@ input[type=file]{max-width:100%;color:var(--dim)}
  <div id="note"></div>
 </div>
 <div class="card">
+ <h2>Device health</h2>
+ <table id="health" style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums"></table>
+</div>
+<div class="card">
  <h2>Firmware update</h2>
  <div style="color:var(--dim)">Installed version: <span id="ver">&hellip;</span></div>
  <div class="acts"><input type="file" id="fwfile" accept=".bin"><button class="pri" id="fwgo">Install update</button></div>
@@ -196,7 +201,26 @@ function fill(s){
   fillPlaces(s);
   $('mapdel').style.display=m.present?'':'none';
   const age=s.data_age_s<0?'waiting for data':(s.data_age_s>30?'no data for '+s.data_age_s+' s':'live');
-  $('stat').textContent=s.aircraft+' in range · '+s.beyond+' beyond · '+age+(s.mil?' · military only':'');
+  $('stat').textContent=s.aircraft+' in range · '+s.beyond+' beyond · '+age+(s.mil?' · military only':'')+
+    (s.health.source!=='adsb.fi'?' · backup feed '+s.health.source:'');
+  // Emergency banner and device health.
+  const al=$('alert');
+  if(s.alerts.length){al.style.display='';al.textContent='⚠ Emergency: '+s.alerts.map(a=>(a.callsign||'unknown')+' squawking '+a.squawk).join(', ')}
+  else al.style.display='none';
+  const h=s.health,kbs=n=>Math.round(n/1024)+' KB',up=h.uptime_s;
+  const rows=[
+    ['Board',h.chip+' ('+h.cores+(h.cores>1?' cores':' core')+')'+(h.psram?', '+(h.psram/1048576).toFixed(0)+' MB extra memory':'')],
+    ['Running for',Math.floor(up/86400)+' d '+Math.floor(up%86400/3600)+' h '+Math.floor(up%3600/60)+' min'],
+    ['Free memory',kbs(h.heap)+' now, '+kbs(h.heap_min)+' at lowest, largest block '+kbs(h.heap_block)],
+    ['Screen redraw',h.frame_ms?h.frame_ms+' ms per frame':'—'],
+    ['Wi-Fi signal',h.rssi+' dBm'+(h.rssi>-60?' (strong)':h.rssi>-72?' (good)':h.rssi>-82?' (weak)':' (very weak)')],
+    ['Aircraft data',h.source+', last request '+h.fetch_ms+' ms'+(h.fetch_status&&h.fetch_status!==200?' (status '+h.fetch_status+')':'')],
+    ['Requests',h.fetch_ok+' ok, '+h.fetch_fail+' failed'],
+    ['Firmware',s.version+', '+Math.round(h.fw_used*100/h.fw_slot)+'% of its slot']];
+  const tb=$('health');tb.textContent='';
+  for(const r of rows){const tr=tb.insertRow();const a=tr.insertCell(),b=tr.insertCell();
+    a.textContent=r[0];b.textContent=r[1];a.style.cssText='color:var(--dim);padding:5px 12px 5px 0;white-space:nowrap;vertical-align:top';b.style.padding='5px 0'}
+
   const box=$('ranges');box.textContent='';
   s.ranges.forEach((label,i)=>{const b=document.createElement('button');b.textContent=label;
     if(i===s.range)b.className='on';b.onclick=()=>post({range:i}).then(load).then(()=>shot(300));box.appendChild(b)});

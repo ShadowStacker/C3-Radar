@@ -37,12 +37,38 @@ struct Aircraft {
   uint8_t shape;
   /** Feed database flag (dbFlags bit 0): operated by a military. */
   bool military;
+  /** Emergency squawk: 0 none, else kSquawkHijack / kSquawkRadio / kSquawkGeneral. */
+  uint8_t emergency;
   char callsign[9];
   char type[5];
   char alt[12];
 };
 
+constexpr uint8_t kSquawkHijack = 1;   // 7500
+constexpr uint8_t kSquawkRadio = 2;    // 7600
+constexpr uint8_t kSquawkGeneral = 3;  // 7700
+/** "7500" / "7600" / "7700" for a non-zero Aircraft::emergency. */
+const char* squawkText(uint8_t emergency);
+
 constexpr size_t kMaxAircraft = 64;
+
+/** An aircraft currently declaring an emergency. */
+struct Alert {
+  char callsign[9];
+  uint8_t emergency;
+};
+/** Copy the current emergencies (thread safe). Returns how many. */
+size_t alerts(Alert* out, size_t max_out);
+
+/** Health of the data feed, for the web page. */
+struct FetchStats {
+  const char* source;       // name of the feed in use
+  uint32_t last_fetch_ms;   // duration of the last request
+  uint32_t ok_count;
+  uint32_t fail_count;
+  int last_status;          // HTTP status (or negative client error) of the last request
+};
+FetchStats stats();
 
 /** Create the internal lock. Call once before any fetch/snapshot. */
 void init();

@@ -172,6 +172,9 @@ int main(int argc, char** argv) {
     }
   }
   s_now += 1200;
+  if (const char* extra = std::getenv("C3_ADD_MS")) {
+    s_now += static_cast<unsigned long>(std::atol(extra));  // e.g. to catch a blink phase
+  }
   ui::radarDisplayDraw();
   savePanel(out_dir + "/radar.bmp");
 

@@ -37,19 +37,18 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio
 
-      - name: Build
-        run: pio run -e supermini
-
-      - name: Merge web-flash image
-        run: pio run -t merge -e supermini
+      - name: Build (ESP32-C3 and ESP32-S3)
+        run: |
+          pio run -e supermini -e s3supermini
+          pio run -t merge -e supermini -e s3supermini
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: c3-radar-supermini
+          name: c3-radar-firmware
           if-no-files-found: error
           path: |
-            .pio/build/supermini/firmware-merged.bin
-            .pio/build/supermini/firmware.bin
-            .pio/build/supermini/bootloader.bin
-            .pio/build/supermini/partitions.bin
+            .pio/build/*/firmware-merged.bin
+            .pio/build/*/firmware.bin
+            .pio/build/*/bootloader.bin
+            .pio/build/*/partitions.bin

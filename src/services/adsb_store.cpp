@@ -185,6 +185,23 @@ void fillAltitude(Aircraft* ac, const JsonObject& plane) {
   ac->vrate_fpm = static_cast<int16_t>(rate);
 }
 
+uint8_t pickEmergency(const JsonObject& plane) {
+  if (plane["squawk"].is<const char*>()) {
+    const char* sq = plane["squawk"].as<const char*>();
+    if (strcmp(sq, "7500") == 0) return kSquawkHijack;
+    if (strcmp(sq, "7600") == 0) return kSquawkRadio;
+    if (strcmp(sq, "7700") == 0) return kSquawkGeneral;
+  }
+  // ADS-B emergency status, for aircraft whose squawk the feed did not relay.
+  if (plane["emergency"].is<const char*>()) {
+    const char* e = plane["emergency"].as<const char*>();
+    if (strcmp(e, "unlawful") == 0) return kSquawkHijack;
+    if (strcmp(e, "nordo") == 0) return kSquawkRadio;
+    if (strcmp(e, "general") == 0) return kSquawkGeneral;
+  }
+  return 0;
+}
+
 void fillTagFields(Aircraft* ac, const JsonObject& plane) {
   copyJsonStringTrimmed(plane, "flight", ac->callsign, sizeof(ac->callsign));
   if (ac->callsign[0] == '\0') {
@@ -266,7 +283,8 @@ void buildFilter(JsonDocument& filter) {
   for (const char* key :
        {"lat", "lon", "true_heading", "mag_heading", "track", "dir", "gs",
         "tas", "ias", "alt_baro", "alt_geom", "baro_rate", "geom_rate",
-        "seen_pos", "flight", "hex", "t", "category", "dbFlags"}) {
+        "seen_pos", "flight", "hex", "t", "category", "dbFlags", "squawk",
+        "emergency"}) {
     f[key] = true;
   }
 }
@@ -289,10 +307,13 @@ size_t parseAircraft(JsonArray ac, Aircraft* out, size_t max_out,
     }
     // dbFlags bit 0 = military (readsb / tar1090 aircraft database).
     const bool military = (plane["dbFlags"].as<unsigned>() & 1u) != 0;
-    if (military_only && !military) {
+    // Emergencies are always shown, whatever the filter.
+    const uint8_t emergency = pickEmergency(plane);
+    if (military_only && !military && emergency == 0) {
       continue;
     }
     out[n].military = military;
+    out[n].emergency = emergency;
     out[n].hex = parseHex(plane);
     out[n].shape = pickShape(plane);
     out[n].trail_count = 0;
@@ -332,6 +353,33 @@ void publish(Aircraft* list, size_t count) {
   s_aircraft_count = count;
   s_last_update_ms = millis();  // base time for dead-reckoning
   unlock();
+}
+
+const char* squawkText(uint8_t emergency) {
+  switch (emergency) {
+    case kSquawkHijack:
+      return "7500";
+    case kSquawkRadio:
+      return "7600";
+    case kSquawkGeneral:
+      return "7700";
+    default:
+      return "";
+  }
+}
+
+size_t alerts(Alert* out, size_t max_out) {
+  size_t n = 0;
+  lock();
+  for (size_t i = 0; i < s_aircraft_count && n < max_out; ++i) {
+    if (s_aircraft[i].emergency != 0) {
+      memcpy(out[n].callsign, s_aircraft[i].callsign, sizeof(out[n].callsign));
+      out[n].emergency = s_aircraft[i].emergency;
+      ++n;
+    }
+  }
+  unlock();
+  return n;
 }
 
 size_t snapshotAircraft(Aircraft* out, size_t max_out,

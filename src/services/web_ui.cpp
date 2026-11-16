@@ -133,7 +133,37 @@ void handleState() {
   doc["beyond"] = ui::radarDisplayBeyondCount();
   const unsigned long last = adsb::lastUpdateMs();
   doc["data_age_s"] = last == 0 ? -1 : static_cast<long>((millis() - last) / 1000UL);
-  doc["heap"] = ESP.getFreeHeap();
+  JsonArray alerts = doc["alerts"].to<JsonArray>();
+  adsb::Alert alert_list[4];
+  const size_t alert_count = adsb::alerts(alert_list, 4);
+  for (size_t i = 0; i < alert_count; ++i) {
+    JsonObject a = alerts.add<JsonObject>();
+    a["callsign"] = alert_list[i].callsign;
+    a["squawk"] = adsb::squawkText(alert_list[i].emergency);
+  }
+
+  // Device health.
+  static const uint32_t fw_used = ESP.getSketchSize();
+  static const uint32_t fw_slot = ESP.getFreeSketchSpace();
+  const adsb::FetchStats feed = adsb::stats();
+  JsonObject h = doc["health"].to<JsonObject>();
+  h["chip"] = ESP.getChipModel();
+  h["cores"] = ESP.getChipCores();
+  h["uptime_s"] = millis() / 1000UL;
+  h["heap"] = ESP.getFreeHeap();
+  h["heap_min"] = ESP.getMinFreeHeap();
+  h["heap_block"] = ESP.getMaxAllocHeap();
+  h["psram"] = ESP.getPsramSize();
+  h["psram_free"] = ESP.getFreePsram();
+  h["frame_ms"] = ui::radarDisplayFrameMs();
+  h["rssi"] = WiFi.RSSI();
+  h["source"] = feed.source;
+  h["fetch_ms"] = feed.last_fetch_ms;
+  h["fetch_ok"] = feed.ok_count;
+  h["fetch_fail"] = feed.fail_count;
+  h["fetch_status"] = feed.last_status;
+  h["fw_used"] = fw_used;
+  h["fw_slot"] = fw_slot;
 
   String out;
   serializeJson(doc, out);
@@ -413,6 +443,8 @@ void handleUpdateChunk() {
             up.buf[0x21] == 0x54 && up.buf[0x22] == 0xCD && up.buf[0x23] == 0xAB;
         if (!app_image) {
           s_update_error = "That is not an update file. Use the file ending in -update.bin";
+        } else if ((up.buf[12] | (up.buf[13] << 8)) != CONFIG_IDF_FIRMWARE_CHIP_ID) {
+          s_update_error = "That update is for a different board (ESP32-C3 vs ESP32-S3)";
         } else if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
           s_update_error = "No space for the update";
         } else {

@@ -240,7 +240,10 @@ void resetWifiCredentials() {
 }
 
 void onConfigPortalApStarted(WiFiManager*) {
+#if CONFIG_IDF_TARGET_ESP32C3
+  // C3 Super Mini boards brown out / fail to associate at full transmit power.
   WiFi.setTxPower(WIFI_POWER_8_5dBm);
+#endif
   ui::radarDisplayHidden();
   statusScreenPortal();
 #ifdef WM_MDNS
@@ -326,7 +329,10 @@ void stopLanWebPortal() {
 }
 
 void prepareSta() {
+#if CONFIG_IDF_TARGET_ESP32C3
+  // C3 Super Mini boards brown out / fail to associate at full transmit power.
   WiFi.setTxPower(WIFI_POWER_8_5dBm);
+#endif
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(WIFI_PS_NONE);
   WiFi.setAutoReconnect(true);

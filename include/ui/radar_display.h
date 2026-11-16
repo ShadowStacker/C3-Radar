@@ -17,6 +17,9 @@ void radarDisplayRefreshAircraft();
 /** Tell the renderer a status screen replaced the radar (stops the web mirror). */
 void radarDisplayHidden();
 
+/** Average time to draw and send one frame, in milliseconds. */
+uint32_t radarDisplayFrameMs();
+
 /** Aircraft drawn in the last frame: inside the outer ring / as rim markers. */
 size_t radarDisplayInRangeCount();
 size_t radarDisplayBeyondCount();

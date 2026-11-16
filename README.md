@@ -1,6 +1,6 @@
 # C3-Radar
 
-A live aircraft radar for your desk: an **ESP32-C3 Super Mini** and a **2.1" round 360×360 GC9B72 display** showing the planes around you, straight from the free [adsb.fi](https://opendata.adsb.fi/) feed. No receiver or antenna needed — just Wi-Fi.
+A live aircraft radar for your desk: an **ESP32-C3 Super Mini** or **ESP32-S3 SuperMini** and a **2.1" round 360×360 GC9B72 display** showing the planes around you, straight from free community feeds ([adsb.fi](https://opendata.adsb.fi/), with automatic backups). No receiver or antenna needed — just Wi-Fi.
 
 ![Radar display: busy airspace, mixed traffic with a military aircraft, and military-only mode](docs/images/display-hero.png)
 
@@ -15,6 +15,8 @@ C3-Radar is a port of [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP
 - **Sharp 360×360 graphics** — smooth fonts and rings, compass ticks, runway overlays for large airports.
 - **Aircraft silhouettes** — jet, light aircraft and helicopter shapes that point along the heading, coloured by altitude, with a speed line and a short trail.
 - **Readable tags** — callsign, type and altitude with a climb/descent arrow. Tags never overlap: in busy airspace, farther aircraft drop to callsign-only or no tag.
+- **Emergency alerts** — an aircraft squawking 7500, 7600 or 7700 gets flashing rings, a red squawk line and an `EMERGENCY` badge, and a banner on the web page.
+- **Backup data feeds** — if adsb.fi stops answering, the radar switches to another free feed by itself.
 - **Military aircraft** — always drawn red with a ring, plus a **military-only** switch that hides everything else.
 - **Local map** — coastline, lakes, rivers, borders, motorways, main roads, town names and airfields under the radar, each with its own switch. Downloaded once from OpenStreetMap through the web page.
 - **Colour themes** — five built-in themes and a custom palette you can edit colour by colour.
@@ -28,29 +30,31 @@ C3-Radar is a port of [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP
 
 | Part | Notes |
 |---|---|
-| ESP32-C3 Super Mini | 4 MB flash, USB-C |
+| ESP32-C3 Super Mini **or** ESP32-S3 SuperMini | 4 MB flash, USB-C. The S3 (ESP32-S3FH4R2) is faster and has more memory; both run the same features. |
 | 2.1" round TFT, GC9B72, 360×360, SPI | The back of the board is marked `GC9B72` |
 | 8 jumper wires | 7 if you skip the backlight wire |
 | USB-C data cable | For flashing and power |
 
 ## Wiring
 
-| Display pin | ESP32-C3 pin |
-|---|---|
-| VCC | **3V3** (do not use 5 V) |
-| GND | GND |
-| SCL | GPIO 4 |
-| SDA | GPIO 3 |
-| DC | GPIO 10 |
-| CS | GPIO 1 |
-| RST (RES) | GPIO 0 |
-| BL (BLK) | GPIO 5 — optional; lets the brightness slider dim the backlight as well as the picture |
+| Display pin | ESP32-C3 Super Mini | ESP32-S3 SuperMini |
+|---|---|---|
+| VCC | **3V3** (do not use 5 V) | **3V3** (do not use 5 V) |
+| GND | GND | GND |
+| SCL | GPIO 4 | GPIO 12 |
+| SDA | GPIO 3 | GPIO 11 |
+| CS | GPIO 1 | GPIO 10 |
+| DC | GPIO 10 | GPIO 9 |
+| RST (RES) | GPIO 0 | GPIO 8 |
+| BL (BLK) | GPIO 5 (optional) | GPIO 13 (optional) |
 
-Pins are set in [`include/config.h`](include/config.h) if you need a different layout.
+On the S3 SuperMini these are eight neighbouring pins on one edge of the board, in this order: `3V3, GND, 13, 12, 11, 10, 9, 8`. The BOOT button is the on-board one on both boards (GPIO 9 on the C3, GPIO 0 on the S3).
+
+BL is optional: the brightness slider dims the picture either way, and also dims the backlight when BL is wired. Pins are set in [`include/config.h`](include/config.h) if you need a different layout.
 
 ## Install the firmware
 
-Each [release](https://github.com/ShadowStacker/C3-Radar/releases) has two files (also in [`firmware/`](firmware/)):
+Each [release](https://github.com/ShadowStacker/C3-Radar/releases) has two files per board (also in [`firmware/`](firmware/)). Pick the pair that matches your board: `esp32c3` or `esp32s3`.
 
 | File | Use it for |
 |---|---|
@@ -62,7 +66,7 @@ Each [release](https://github.com/ShadowStacker/C3-Radar/releases) has two files
 1. Open [esptool-js](https://espressif.github.io/esptool-js/) in Chrome or Edge.
 2. Put the board in download mode: hold **BOOT**, tap **RESET**, release **BOOT**.
 3. Click **Connect** and pick the board's serial port.
-4. Set the flash address to `0x0`, choose the `-full.bin` file, click **Program**.
+4. Set the flash address to `0x0`, choose the `-full.bin` file for your board, click **Program**.
 5. Tap **RESET** when it finishes.
 
 ### First install, from the command line
@@ -71,13 +75,21 @@ Each [release](https://github.com/ShadowStacker/C3-Radar/releases) has two files
 pip install esptool
 ```
 
+For the C3:
+
 ```bash
-esptool.py --chip esp32c3 write_flash 0x0 firmware/c3-radar-full.bin
+esptool.py --chip esp32c3 write_flash 0x0 firmware/c3-radar-esp32c3-full.bin
+```
+
+For the S3:
+
+```bash
+esptool.py --chip esp32s3 write_flash 0x0 firmware/c3-radar-esp32s3-full.bin
 ```
 
 ### Updating later
 
-Open the radar's web page, scroll to **Firmware update**, choose the new `-update.bin` file and click **Install update**. The radar restarts on the new version with Wi-Fi, location, name, theme, settings and map all intact.
+Open the radar's web page, scroll to **Firmware update**, choose the new `-update.bin` file for your board and click **Install update**. The radar restarts on the new version with Wi-Fi, location, name, theme, settings and maps all intact. A file for the wrong board is refused.
 
 Flashing the `-full.bin` again over USB also works, but it wipes Wi-Fi and settings, so you would go through setup again.
 
@@ -111,6 +123,7 @@ Versions before 0.11 had no update slot. Moving from one of those needs one last
 | Dots on the rim | Aircraft beyond the outer ring, shown at the correct bearing |
 | Teal lines and four-letter codes | Runways and ICAO code of large airports |
 | Thin blue, amber and dashed purple lines, grey names | The map: water, roads, borders and towns (see [The map](#the-map)) |
+| Flashing red rings, red `SQ 7700` line, `EMERGENCY` badge | An aircraft declaring an emergency (7500 hijack, 7600 radio failure, 7700 general). Always shown, even in military-only mode. |
 | `MIL ONLY` badge | The military-only filter is on |
 | `NO DATA` badge | No aircraft data received for 30 seconds |
 
@@ -137,6 +150,7 @@ Once the radar is on your network, open the address shown on the **Connected** s
 | Location | Latitude and longitude of the radar centre, and your list of saved locations |
 | Colours | Theme picker and the custom colour editor |
 | Screen | Brightness, rotation and an invert-colours fix |
+| Device health | Board, uptime, free memory, redraw time, Wi-Fi signal, which data feed is in use and how it is doing |
 | Firmware update | Shows the installed version and installs a new one |
 | Network | Device name, web server port, plus links to Wi-Fi setup and device info |
 
@@ -192,6 +206,10 @@ Each device names itself `plane-radar-xxxx`, using four characters from its chip
 
 adsb.fi allows about one request per second from your home connection. Each radar asks every 5 seconds, so a handful is fine.
 
+### Data feeds
+
+The radar normally reads [adsb.fi](https://opendata.adsb.fi/). After two failed requests in a row it moves to [adsb.lol](https://www.adsb.lol/), then [airplanes.live](https://airplanes.live/), and tries adsb.fi again every 15 minutes. The web page shows "backup feed" in its status line while a backup is in use, and **Device health** shows the feed and its success count.
+
 ### Changing the web server port
 
 Enter a port from 1 to 65535 under **Network** and click **Change port**. The web server restarts and your browser follows it to the new address, for example `http://plane-radar-a1b2.local:8080`.
@@ -214,7 +232,7 @@ adsb.fi marks aircraft that its database lists as military. With the switch on, 
 | Picture is sideways or upside down | Web page → Screen → **Rotation** |
 | The `.local` address doesn't open | Use the IP address from the **Connected** screen or your router's device list; add `:port` if you changed the port |
 | No aircraft | Check the location is right, try the 25 km range, and make sure military-only is off |
-| `NO DATA` badge | The device can't reach adsb.fi; check your internet connection |
+| `NO DATA` badge | None of the data feeds can be reached; check your internet connection (Device health shows the last error) |
 | Stuck on the yellow **Could not connect** screen | Hold **BOOT** for 3 seconds and run setup again |
 | Firmware update says "not an update file" | Choose the file ending in `-update.bin`, not `-full.bin` |
 
@@ -231,6 +249,8 @@ pio run -e supermini -t upload
 ```bash
 pio device monitor
 ```
+
+Use `-e s3supermini` instead of `-e supermini` for the ESP32-S3 board.
 
 To make the full image for USB flashing (written to `.pio/build/supermini/firmware-merged.bin`; the update image is `firmware.bin` next to it):
 

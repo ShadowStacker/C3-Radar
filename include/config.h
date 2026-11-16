@@ -3,8 +3,11 @@
 #include <cstdint>
 
 #include <driver/gpio.h>
+#if __has_include(<sdkconfig.h>)
+#include <sdkconfig.h>  // CONFIG_IDF_TARGET_* (absent in the PC preview build)
+#endif
 
-#define PLANE_RADAR_VERSION "0.13.0"
+#define PLANE_RADAR_VERSION "0.14.0"
 
 namespace config {
 
@@ -29,13 +32,23 @@ constexpr unsigned long kWifiDownGraceMs = 4000;
 /** Minimum interval between background reconnect tries. */
 constexpr unsigned long kWifiReconnectIntervalMs = 15000;
 
-// --- BOOT button (ESP32-C3 Super Mini, active LOW) ---
+// --- Board wiring ---
+// BOOT is the on-board button (active LOW). The display pins are picked so the
+// wires sit next to each other on each board's header.
+#if CONFIG_IDF_TARGET_ESP32S3
+// ESP32-S3 SuperMini: 3V3, GND, 13, 12, 11, 10, 9, 8 are one row of the header.
+constexpr char kBoardName[] = "ESP32-S3 SuperMini";
+constexpr gpio_num_t kBootPin = GPIO_NUM_0;
+constexpr gpio_num_t kDisplayPinBl = GPIO_NUM_13;
+constexpr gpio_num_t kDisplayPinSclk = GPIO_NUM_12;  // display SCL
+constexpr gpio_num_t kDisplayPinMosi = GPIO_NUM_11;  // display SDA
+constexpr gpio_num_t kDisplayPinCs = GPIO_NUM_10;
+constexpr gpio_num_t kDisplayPinDc = GPIO_NUM_9;
+constexpr gpio_num_t kDisplayPinRst = GPIO_NUM_8;
+#else
+// ESP32-C3 Super Mini.
+constexpr char kBoardName[] = "ESP32-C3 Super Mini";
 constexpr gpio_num_t kBootPin = GPIO_NUM_9;
-constexpr unsigned long kBootResetHoldMs = 3000UL;
-/** Ignore BOOT taps shorter than this (debounce). */
-constexpr unsigned long kBootTapMinMs = 40UL;
-
-// --- Display: GC9B72 2.1" round 360x360 (SPI) ---
 constexpr gpio_num_t kDisplayPinRst = GPIO_NUM_0;
 constexpr gpio_num_t kDisplayPinCs = GPIO_NUM_1;
 constexpr gpio_num_t kDisplayPinDc = GPIO_NUM_10;
@@ -43,6 +56,12 @@ constexpr gpio_num_t kDisplayPinMosi = GPIO_NUM_3;  // display SDA
 constexpr gpio_num_t kDisplayPinSclk = GPIO_NUM_4;  // display SCL
 /** Backlight (BL / BLK pin), PWM dimmed. Leave unconnected for always-on. */
 constexpr gpio_num_t kDisplayPinBl = GPIO_NUM_5;
+#endif
+constexpr unsigned long kBootResetHoldMs = 3000UL;
+/** Ignore BOOT taps shorter than this (debounce). */
+constexpr unsigned long kBootTapMinMs = 40UL;
+
+// --- Display: GC9B72 2.1" round 360x360 (SPI) ---
 constexpr uint8_t kDisplayPwmChannel = 0;
 constexpr uint32_t kDisplayPwmFreq = 5000;
 

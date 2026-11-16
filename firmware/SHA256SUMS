@@ -1,2 +1,4 @@
-2cf6df31a0b76dd21645b22628e7a12dd668078bb59cc0235dc2dcd13c2b3bee  c3-radar-full.bin
-261d5a27455e79054adc528cfa5b3fac64242efc7616ab8ac49f183c2ef79ba9  c3-radar-update.bin
+e92aade18b0bad8f5b520cae2303248266ee25cb43928b373ef42e1dd37b037a  c3-radar-esp32c3-full.bin
+3d45c3f91047e912cd40d5ee1d2ba13379b9a349adb7bb582061e4a9cb849e18  c3-radar-esp32c3-update.bin
+f5ffef881418296a10dd3b22c83c780bd63ff443bcad991848b96e1e344e63a0  c3-radar-esp32s3-full.bin
+a65cc93fe3232b4879070fc2ff5404115844524ddcc61fb12cbce7a45ebab896  c3-radar-esp32s3-update.bin

@@ -54,4 +54,4 @@ fi
 mkdir -p "$(dirname "$OUT")"
 cp "$MERGED" "$OUT"
 echo "Wrote ${OUT}"
-echo "Flash at offset 0x0 with chip ESP32-C3, 4MB flash (Web Serial flasher)."
+echo "Flash at offset 0x0, 4MB flash (Web Serial flasher). Use --env s3supermini for the ESP32-S3."

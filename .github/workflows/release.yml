@@ -38,8 +38,8 @@ jobs:
 
       - name: Build and merge
         run: |
-          pio run -e supermini
-          pio run -t merge -e supermini
+          pio run -e supermini -e s3supermini
+          pio run -t merge -e supermini -e s3supermini
 
       - name: Package release files
         run: |
@@ -50,8 +50,10 @@ jobs:
           mkdir -p dist
           # full   = everything, for USB flashing at 0x0 (erases settings)
           # update = app only, for the web page's Firmware update (keeps settings)
-          cp .pio/build/supermini/firmware-merged.bin "dist/c3-radar-${VERSION}-full.bin"
-          cp .pio/build/supermini/firmware.bin "dist/c3-radar-${VERSION}-update.bin"
+          cp .pio/build/supermini/firmware-merged.bin "dist/c3-radar-${VERSION}-esp32c3-full.bin"
+          cp .pio/build/supermini/firmware.bin "dist/c3-radar-${VERSION}-esp32c3-update.bin"
+          cp .pio/build/s3supermini/firmware-merged.bin "dist/c3-radar-${VERSION}-esp32s3-full.bin"
+          cp .pio/build/s3supermini/firmware.bin "dist/c3-radar-${VERSION}-esp32s3-update.bin"
           (cd dist && sha256sum *.bin > "c3-radar-${VERSION}.sha256")
           echo "version=${VERSION}" >> "$GITHUB_ENV"
 

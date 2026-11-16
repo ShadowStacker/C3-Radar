@@ -140,6 +140,7 @@ struct PlaneItem {
   bool has_vector;
   bool has_tag;
   bool show_call;
+  bool show_squawk;  // emergency squawk line, always shown
   bool show_type;
   bool show_alt;
   int8_t climb;  // -1 descending, 0 level/unknown, +1 climbing
@@ -156,6 +157,7 @@ struct PlaneItem {
 struct RimDot {
   int16_t x, y;
   uint16_t color;
+  bool alert;
 };
 
 struct TickMark {
@@ -201,6 +203,10 @@ bool s_ticks_ready = false;
 
 char s_scale_label[12] = "";
 const char* s_badge = nullptr;
+/** Toggles twice a second; emergency markers flash with it. */
+bool s_blink = false;
+/** Smoothed time to compose and send one frame, in microseconds. */
+uint32_t s_frame_us = 0;
 bool s_frame_valid = false;
 unsigned long s_first_frame_ms = 0;
 
@@ -394,11 +400,22 @@ bool tagSpotFree(const Rect& r, size_t self) {
   return true;
 }
 
+/** "SQ 7700" for an aircraft declaring an emergency. */
+const char* squawkLine(const Aircraft& plane) {
+  static char text[10];
+  snprintf(text, sizeof(text), "SQ %s", services::adsb::squawkText(plane.emergency));
+  return text;
+}
+
 void measureTag(const Aircraft& plane, const PlaneItem& item, int* w, int* h) {
   int lines = 0;
   int max_w = 0;
   if (item.show_call) {
     max_w = std::max(max_w, textWidth(plane.callsign, kTagFont));
+    ++lines;
+  }
+  if (item.show_squawk) {
+    max_w = std::max(max_w, textWidth(squawkLine(plane), kTagFont));
     ++lines;
   }
   if (item.show_type) {
@@ -470,7 +487,11 @@ void layoutTag(size_t self) {
   item.show_call = (show & radar::kShowCallsign) != 0 && plane.callsign[0] != '\0';
   item.show_type = (show & radar::kShowType) != 0 && plane.type[0] != '\0';
   item.show_alt = (show & radar::kShowAltitude) != 0 && plane.alt[0] != '\0';
-  const int lines = item.show_call + item.show_type + item.show_alt;
+  item.show_squawk = plane.emergency != 0;
+  if (item.show_squawk && plane.callsign[0] != '\0') {
+    item.show_call = true;  // an emergency is always identified
+  }
+  const int lines = item.show_call + item.show_squawk + item.show_type + item.show_alt;
   if (lines == 0) {
     return;
   }
@@ -482,11 +503,12 @@ void layoutTag(size_t self) {
     item.has_tag = true;
     return;
   }
-  if (lines == 1) {
+  if (lines == 1 || (lines == 2 && item.show_squawk && item.show_call)) {
     return;
   }
-  // No room for the whole block: keep the single most useful line.
-  if (item.show_call) {
+  // No room for the whole block: keep the single most useful line (plus the
+  // squawk for an emergency).
+  if (item.show_call || item.show_squawk) {
     item.show_type = false;
     item.show_alt = false;
   } else {
@@ -627,12 +649,14 @@ void buildFrame() {
 
   s_item_count = 0;
   s_dot_count = 0;
+  bool any_emergency = false;
 
   for (size_t i = 0; i < n; ++i) {
     const Aircraft& plane = s_planes[i];
-    if (military_only && !plane.military) {
+    if (military_only && !plane.military && plane.emergency == 0) {
       continue;  // filter toggled since this list was fetched
     }
+    any_emergency = any_emergency || plane.emergency != 0;
 
     float lat = 0.0f;
     float lon = 0.0f;
@@ -653,6 +677,7 @@ void buildFrame() {
       dot.x = static_cast<int16_t>(kCx + lroundf(dx_km / dist_km * rim_r));
       dot.y = static_cast<int16_t>(kCy - lroundf(dy_km / dist_km * rim_r));
       dot.color = color;
+      dot.alert = plane.emergency != 0;
       continue;
     }
 
@@ -661,7 +686,8 @@ void buildFrame() {
     item.color = color;
     item.x = static_cast<int16_t>(kCx + lroundf(dx_km * proj.px_per_km));
     item.y = static_cast<int16_t>(kCy - lroundf(dy_km * proj.px_per_km));
-    item.dist_sq = distSqFromCenter(item.x, item.y);
+    // Emergencies sort first: best tag position, drawn on top.
+    item.dist_sq = plane.emergency != 0 ? -1 : distSqFromCenter(item.x, item.y);
     item.has_tag = false;
     item.climb = plane.vrate_fpm >= 250 ? 1 : (plane.vrate_fpm <= -250 ? -1 : 0);
 
@@ -719,12 +745,15 @@ void buildFrame() {
   radar::formatCurrentRing3Label(s_scale_label, sizeof(s_scale_label));
 
   const unsigned long now = millis();
+  s_blink = ((now / 500UL) & 1UL) != 0;
   if (s_first_frame_ms == 0) {
     s_first_frame_ms = now != 0 ? now : 1;
   }
   const unsigned long since_data = now - (base_ms != 0 ? base_ms : s_first_frame_ms);
   if (since_data > config::kAdsbStaleMs) {
     s_badge = "NO DATA";
+  } else if (any_emergency) {
+    s_badge = "EMERGENCY";
   } else if (military_only) {
     s_badge = "MIL ONLY";
   } else {
@@ -872,6 +901,9 @@ void drawRimDots() {
     const RimDot& d = s_dots[i];
     spot(d.x, d.y, radar::kBeyondRingDotRadiusPx * 16 + 16, pal().outline);
     spot(d.x, d.y, radar::kBeyondRingDotRadiusPx * 16, d.color);
+    if (d.alert && s_blink) {
+      ring(d.x, d.y, radar::kBeyondRingDotRadiusPx + 4, 12, pal().military);
+    }
   }
 }
 
@@ -885,7 +917,14 @@ void drawSymbols() {
                radar::kAircraftTrackLineHalfWidth, item.color);
     }
     drawIcon(item.x, item.y, plane.shape, item.heading_idx, item.color);
-    if (plane.military) {
+    if (plane.emergency != 0) {
+      // Flashing double ring.
+      ring(item.x, item.y, radar::kAircraftHalfPx + 3, 14, pal().military);
+      if (s_blink) {
+        ring(item.x, item.y, radar::kAircraftHalfPx + 8, 14, pal().military);
+        ring(item.x, item.y, radar::kAircraftHalfPx + 13, 10, pal().military, 18);
+      }
+    } else if (plane.military) {
       ring(item.x, item.y, radar::kAircraftHalfPx + 3, 10, pal().military, 26);
     }
   }
@@ -922,6 +961,12 @@ void drawTags() {
       const uint16_t color = plane.military ? pal().mil_callsign : pal().callsign;
       drawText(plane.callsign, lineX(textWidth(plane.callsign, kTagFont)), y,
                kTagFont, color, textdatum_t::top_left);
+      y += s_tag_line_h;
+    }
+    if (item.show_squawk) {
+      const char* sq = squawkLine(plane);
+      drawText(sq, lineX(textWidth(sq, kTagFont)), y, kTagFont, pal().military,
+               textdatum_t::top_left);
       y += s_tag_line_h;
     }
     if (item.show_type) {
@@ -1010,9 +1055,14 @@ void radarDisplayDraw() {
   if (!radarDisplayInit()) {
     return;
   }
+  const unsigned long started = micros();
   buildFrame();
   presentFrame();
+  const uint32_t took = static_cast<uint32_t>(micros() - started);
+  s_frame_us = s_frame_us == 0 ? took : (s_frame_us * 7 + took) / 8;
 }
+
+uint32_t radarDisplayFrameMs() { return (s_frame_us + 500) / 1000; }
 
 void radarDisplayRefreshAircraft() { radarDisplayDraw(); }
 
