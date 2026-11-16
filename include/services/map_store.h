@@ -50,5 +50,7 @@ bool uploadEnd();
 
 /** Remove one stored map. */
 bool remove(size_t index);
+/** Remove every stored map. */
+void removeAll();
 
 }  // namespace services::mapstore

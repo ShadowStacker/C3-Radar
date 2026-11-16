@@ -11,6 +11,7 @@
 #include "config.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
+#include "services/boot_guard.h"
 #include "services/device_settings.h"
 #include "services/map_store.h"
 #include "services/radar_location.h"
@@ -147,6 +148,10 @@ void handleState() {
   static const uint32_t fw_slot = ESP.getFreeSketchSpace();
   const adsb::FetchStats feed = adsb::stats();
   JsonObject h = doc["health"].to<JsonObject>();
+  h["reset"] = boot::resetReason();
+  h["streak"] = boot::crashStreak();
+  h["safe"] = boot::safeMode();
+  h["no_fetch"] = boot::skipFetch();
   h["chip"] = ESP.getChipModel();
   h["cores"] = ESP.getChipCores();
   h["uptime_s"] = millis() / 1000UL;
@@ -489,8 +494,20 @@ void handleUpdateDone() {
   }
 }
 
+/** Restart on request; leaves safe mode so the next start is a normal one. */
+void handleRestart() {
+  boot::clear();
+  sendResult(true, nullptr);
+  s_reboot_pending = true;
+}
+
 /** Removes the map in use (or map number `i` if given). */
 void handleMapDelete() {
+  if (s_server->hasArg("all")) {
+    mapstore::removeAll();
+    sendResult(true, nullptr);
+    return;
+  }
   const int index =
       s_server->hasArg("i") ? static_cast<int>(s_server->arg("i").toInt()) : mapstore::activeIndex();
   const bool ok = index >= 0 && mapstore::remove(static_cast<size_t>(index));
@@ -508,6 +525,7 @@ void registerRoutes(WebServer& server) {
   server.on("/screen.bmp", HTTP_GET, handleScreen);
   server.on("/api/map", HTTP_POST, handleMapUploadDone, handleMapUploadChunk);
   server.on("/api/map/delete", HTTP_POST, handleMapDelete);
+  server.on("/api/restart", HTTP_POST, handleRestart);
   server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateChunk);
 }
 

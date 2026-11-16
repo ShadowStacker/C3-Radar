@@ -206,6 +206,20 @@ void statusScreenConnected(const char* ssid, const char* ip, uint16_t http_port)
   s_connecting_text_drawn = false;
 }
 
+void statusScreenBoot(const char* version, const char* notice) {
+  char line[32];
+  snprintf(line, sizeof(line), "version %s", version);
+  const bool has_notice = notice != nullptr && notice[0] != '\0';
+  const TextLine lines[] = {
+      {"C3-Radar", UiFont::kTitle26, config::kTextOnBlack},
+      {line, UiFont::kCardinal20, kColorDim},
+      {has_notice ? notice : "starting", UiFont::kBody22,
+       has_notice ? ui::radar::rgb565(255, 190, 70) : kColorGreen},
+  };
+  drawTextBlock(config::kColorBlack, lines, sizeof(lines) / sizeof(lines[0]));
+  s_connecting_text_drawn = false;
+}
+
 void statusScreenPortal() {
   const uint16_t fg = config::kTextOnYellow;
   const TextLine lines[] = {

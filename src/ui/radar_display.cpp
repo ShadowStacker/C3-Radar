@@ -203,6 +203,7 @@ bool s_ticks_ready = false;
 
 char s_scale_label[12] = "";
 const char* s_badge = nullptr;
+const char* s_notice = nullptr;
 /** Toggles twice a second; emergency markers flash with it. */
 bool s_blink = false;
 /** Smoothed time to compose and send one frame, in microseconds. */
@@ -750,7 +751,9 @@ void buildFrame() {
     s_first_frame_ms = now != 0 ? now : 1;
   }
   const unsigned long since_data = now - (base_ms != 0 ? base_ms : s_first_frame_ms);
-  if (since_data > config::kAdsbStaleMs) {
+  if (s_notice != nullptr) {
+    s_badge = s_notice;
+  } else if (since_data > config::kAdsbStaleMs) {
     s_badge = "NO DATA";
   } else if (any_emergency) {
     s_badge = "EMERGENCY";
@@ -1050,6 +1053,8 @@ bool radarDisplayInit() {
 }
 
 void radarDisplayHidden() { s_frame_valid = false; }
+
+void radarDisplaySetNotice(const char* text) { s_notice = text; }
 
 void radarDisplayDraw() {
   if (!radarDisplayInit()) {

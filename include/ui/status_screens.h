@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+/** First thing on screen at power-up: name, version and an optional notice. */
+void statusScreenBoot(const char* version, const char* notice);
 void statusScreenPortal();
 void statusScreenConnectFailed();
 void statusScreenWifiReset();

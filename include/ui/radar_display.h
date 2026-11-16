@@ -14,6 +14,9 @@ void radarDisplayDraw();
 /** Same as radarDisplayDraw(); kept for the periodic redraw call site. */
 void radarDisplayRefreshAircraft();
 
+/** A short notice shown as the badge, ahead of everything else (nullptr = none). */
+void radarDisplaySetNotice(const char* text);
+
 /** Tell the renderer a status screen replaced the radar (stops the web mirror). */
 void radarDisplayHidden();
 

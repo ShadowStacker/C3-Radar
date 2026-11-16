@@ -161,8 +161,8 @@ void thinLine(int x0, int y0, int x1, int y1, const LineStyle& style, int clip_r
       std::swap(x0, x1);
       std::swap(y0, y1);
     }
-    const int32_t grad = static_cast<int32_t>((static_cast<int64_t>(y1 - y0) << 16) / (x1 - x0));
-    int32_t yf = (y0 << 16) + 0x8000;  // pixel centres
+    const int32_t grad = static_cast<int32_t>(static_cast<int64_t>(y1 - y0) * 65536 / (x1 - x0));
+    int32_t yf = y0 * 65536 + 0x8000;  // pixel centres
     for (int x = x0; x <= x1; ++x, yf += grad) {
       if (style.dashed && ((x + (yf >> 16)) & 7) >= 5) {
         continue;
@@ -178,11 +178,11 @@ void thinLine(int x0, int y0, int x1, int y1, const LineStyle& style, int clip_r
       std::swap(x0, x1);
       std::swap(y0, y1);
     }
-    const int32_t grad = static_cast<int32_t>((static_cast<int64_t>(x1 - x0) << 16) / (y1 - y0));
+    const int32_t grad = static_cast<int32_t>(static_cast<int64_t>(x1 - x0) * 65536 / (y1 - y0));
     // Only walk the rows that are in this strip.
     const int ya = std::max(y0, s_by);
     const int yb = std::min(y1, s_by + kBandH - 1);
-    int32_t xf = (x0 << 16) + 0x8000 + grad * (ya - y0);
+    int32_t xf = x0 * 65536 + 0x8000 + grad * (ya - y0);
     for (int y = ya; y <= yb; ++y, xf += grad) {
       if (style.dashed && ((y + (xf >> 16)) & 7) >= 5) {
         continue;

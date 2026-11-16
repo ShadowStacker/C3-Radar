@@ -254,6 +254,7 @@ Under **Firmware update**, choose the new `-update.bin` file for your board and 
 
 | Row | What it tells you |
 |---|---|
+| Last restart | Why the chip last restarted: power on, restart, crash, watchdog or brownout (supply voltage dropped) |
 | Board | Chip type and cores |
 | Running for | Time since the last restart |
 | Free memory | Now, the lowest it has been, and the largest free block |
@@ -288,6 +289,8 @@ Under **Firmware update**, choose the new `-update.bin` file for your board and 
 | Map download fails | The browser must be online. If only some layers fail, the page lists them; try again later. |
 | Stuck on the yellow **Could not connect** screen | Hold **BOOT** for 3 seconds and run setup again |
 | Firmware update is refused | Choose the `-update.bin` for your board, not a `-full.bin` and not the other board's file |
+| Radar keeps restarting, or shows `SAFE MODE` | After three abnormal restarts in a row it starts in safe mode: stored maps are not loaded (after five, aircraft data is off too) so the web page stays reachable. The page says why it restarted. Remove the maps or install other firmware, then click **Restart normally**. |
+| Black screen with no "C3-Radar starting" text at power-up | The display itself is not responding: check wiring and power |
 | Forgot the web port | Hold **BOOT** for 3 seconds to reset everything |
 
 For more detail, connect over USB and open a serial monitor at 115200 baud.
@@ -387,7 +390,8 @@ The arguments are: font folder, output folder, latitude, longitude, range index 
 | `POST /api/settings` | Form fields, any subset of those below |
 | `GET /screen.bmp` | The current screen as a 360×360 BMP |
 | `POST /api/map` | Upload a map file (multipart form); the format is described in `include/ui/map_layer.h` |
-| `POST /api/map/delete` | Remove the map in use (or map number `i`) |
+| `POST /api/map/delete` | Remove the map in use (or map number `i`, or every map with `all=1`) |
+| `POST /api/restart` | Restart and leave safe mode |
 | `POST /api/update` | Install an update image (multipart form) |
 
 Fields accepted by `/api/settings`:

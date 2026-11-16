@@ -8,6 +8,7 @@
 #include "config.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
+#include "services/boot_guard.h"
 #include "services/device_settings.h"
 #include "services/map_store.h"
 #include "services/radar_location.h"
@@ -74,7 +75,8 @@ void handleBootButton() {
 // lock; the render loop reads a snapshot.
 void adsbFetchTask(void*) {
   for (;;) {
-    if (WiFi.status() == WL_CONNECTED && !services::web::updateInProgress()) {
+    if (WiFi.status() == WL_CONNECTED && !services::web::updateInProgress() &&
+        !services::boot::skipFetch()) {
       services::adsb::fetchUpdate(services::location::lat(),
                                   services::location::lon(),
                                   ui::radar::fetchRadiusKm(),
@@ -93,13 +95,21 @@ void setup() {
   Serial.println();
   Serial.println("Plane Radar");
 
+  services::boot::begin();
   bootButtonInit();
   services::device::init();
   ui::theme::init();
   displayInit();
   // Grab the strip buffer while the heap is still unfragmented.
+  // Something on screen straight away, so a black screen always means the
+  // display itself (wiring / power) and not a later start-up step.
+  statusScreenBoot(config::kFirmwareVersion,
+                   services::boot::safeMode() ? "Safe mode" : nullptr);
   ui::radarDisplayInit();
   services::mapstore::init();
+  if (services::boot::safeMode()) {
+    ui::radarDisplaySetNotice("SAFE MODE");
+  }
   if (wifiShowsSetupScreenOnBoot()) {
     statusScreenPortal();
   }
@@ -117,6 +127,7 @@ void setup() {
 }
 
 void loop() {
+  services::boot::loop();
   handleBootButton();
   wifiLoop();
 
@@ -131,7 +142,7 @@ void loop() {
   }
 
   if (services::web::rebootPending()) {
-    Serial.println("Firmware updated - restarting");
+    Serial.println("Restarting on request");
     delay(400);  // let the browser receive the reply
     ESP.restart();
   }

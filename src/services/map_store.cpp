@@ -5,6 +5,7 @@
 
 #include <cmath>
 
+#include "services/boot_guard.h"
 #include "services/radar_location.h"
 #include "ui/map_layer.h"
 
@@ -147,6 +148,12 @@ void selectForLocation() {
   if (s_mapped == nullptr) {
     return;
   }
+  if (boot::skipMaps()) {
+    // Safe mode: a stored map is the first suspect, so none is loaded.
+    ui::map::detach();
+    s_active = -1;
+    return;
+  }
   const int best = mapNearCurrentLocation(ui::map::kMaxCenterOffsetKm);
   if (best == s_active && best >= 0 &&
       ui::map::info().valid) {
@@ -238,6 +245,17 @@ bool remove(size_t index) {
   scan();
   selectForLocation();
   return ok;
+}
+
+void removeAll() {
+  ui::map::detach();
+  s_active = -1;
+  if (s_part != nullptr) {
+    for (size_t i = 0; i < s_count; ++i) {
+      esp_partition_erase_range(s_part, s_entries[i].offset, kSector);
+    }
+  }
+  s_count = 0;
 }
 
 }  // namespace services::mapstore

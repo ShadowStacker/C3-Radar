@@ -58,7 +58,10 @@ input[type=file]{max-width:100%;color:var(--dim)}
 #note.err{color:var(--warn)}
 </style></head><body><main>
 <header><h1 id="title">Plane Radar</h1><span id="stat">connecting&hellip;</span>
-<div id="alert" style="display:none;flex-basis:100%;background:#5a0d0a;border:1px solid var(--warn);border-radius:10px;padding:8px 12px;font-weight:600"></div></header>
+<div id="alert" style="display:none;flex-basis:100%;background:#5a0d0a;border:1px solid var(--warn);border-radius:10px;padding:8px 12px;font-weight:600"></div>
+<div id="safe" style="display:none;flex-basis:100%;background:#4a3200;border:1px solid #ffbe46;border-radius:10px;padding:10px 12px">
+ <b>Safe mode.</b> <span id="safetext"></span>
+ <div class="acts"><button id="safemaps">Remove all maps</button><button class="pri" id="saferestart">Restart normally</button></div></div></header>
 
 <div class="card">
  <h2>Display</h2>
@@ -211,6 +214,7 @@ function fill(s){
   const h=s.health,kbs=n=>Math.round(n/1024)+' KB',up=h.uptime_s;
   const rows=[
     ['Board',h.chip+' ('+h.cores+(h.cores>1?' cores':' core')+')'+(h.psram?', '+(h.psram/1048576).toFixed(0)+' MB extra memory':'')],
+    ['Last restart',h.reset+(h.streak?' ('+h.streak+' abnormal in a row)':'')],
     ['Running for',Math.floor(up/86400)+' d '+Math.floor(up%86400/3600)+' h '+Math.floor(up%3600/60)+' min'],
     ['Free memory',kbs(h.heap)+' now, '+kbs(h.heap_min)+' at lowest, largest block '+kbs(h.heap_block)],
     ['Screen redraw',h.frame_ms?h.frame_ms+' ms per frame':'—'],
@@ -218,6 +222,9 @@ function fill(s){
     ['Aircraft data',h.source+', last request '+h.fetch_ms+' ms'+(h.fetch_status&&h.fetch_status!==200?' (status '+h.fetch_status+')':'')],
     ['Requests',h.fetch_ok+' ok, '+h.fetch_fail+' failed'],
     ['Firmware',s.version+', '+Math.round(h.fw_used*100/h.fw_slot)+'% of its slot']];
+  $('safe').style.display=h.safe?'':'none';
+  $('safetext').textContent='The radar restarted abnormally '+h.streak+' times in a row (last cause: '+h.reset+'), so stored maps are not loaded'+
+    (h.no_fetch?' and aircraft data is switched off':'')+'. Remove the maps or install other firmware, then restart.';
   const tb=$('health');tb.textContent='';
   for(const r of rows){const tr=tb.insertRow();const a=tr.insertCell(),b=tr.insertCell();
     a.textContent=r[0];b.textContent=r[1];a.style.cssText='color:var(--dim);padding:5px 12px 5px 0;white-space:nowrap;vertical-align:top';b.style.padding='5px 0'}
@@ -389,6 +396,9 @@ $('theme').onchange=e=>{
 document.querySelectorAll('input[data-slot]').forEach(i=>i.onchange=()=>sendCustom());
 $('calt').onchange=()=>sendCustom();
 
+$('safemaps').onclick=async()=>{await fetch('/api/map/delete?all=1',{method:'POST'});load()};
+$('saferestart').onclick=async()=>{await fetch('/api/restart',{method:'POST'});
+  $('safetext').textContent='Restarting\u2026';setTimeout(()=>location.reload(),12000)};
 function fwnote(t,err){const n=$('fwnote');n.textContent=t;n.style.color=err?'var(--warn)':'var(--acc)'}
 $('fwgo').onclick=()=>{
   const f=$('fwfile').files[0];
