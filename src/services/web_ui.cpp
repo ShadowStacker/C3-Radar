@@ -188,15 +188,6 @@ void sendResult(bool ok, const char* error) {
   s_server->send(ok ? 200 : 400, "application/json", out);
 }
 
-bool parseDouble(const String& text, double* out) {
-  if (text.length() == 0) {
-    return false;
-  }
-  char* end = nullptr;
-  *out = strtod(text.c_str(), &end);
-  return end != text.c_str() && *end == '\0';
-}
-
 /** Accepts any subset of the settings as form fields; applies them at once. */
 void handleSettings() {
   WebServer& srv = *s_server;
@@ -206,9 +197,14 @@ void handleSettings() {
   if (srv.hasArg("lat") || srv.hasArg("lon")) {
     double lat = 0.0;
     double lon = 0.0;
-    if (!parseDouble(srv.arg("lat"), &lat) || !parseDouble(srv.arg("lon"), &lon) ||
-        !location::save(lat, lon)) {
-      sendResult(false, "Latitude must be -90..90 and longitude -180..180");
+    const String lat_text = srv.arg("lat");
+    const String lon_text = srv.arg("lon");
+    if (!location::parseNumber(lat_text.c_str(), &lat) ||
+        !location::parseNumber(lon_text.c_str(), &lon) || !location::save(lat, lon)) {
+      // Echo what arrived, so a bad value can be told from a bad request.
+      const String message = "Latitude must be -90..90 and longitude -180..180 (the radar received \"" +
+                             lat_text + "\" and \"" + lon_text + "\")";
+      sendResult(false, message.c_str());
       return;
     }
     refetch = true;

@@ -14,6 +14,12 @@ double lon();
 /** Parse portal strings, validate, persist to NVS, update runtime values. */
 bool saveFromStrings(const char* lat_str, const char* lon_str);
 
+/**
+ * Read a plain decimal number such as "-121.4927" (a decimal comma is accepted
+ * too). Hand-written so it behaves the same on every chip and C library.
+ */
+bool parseNumber(const char* text, double* out);
+
 /** Validate, persist to NVS and update runtime values. */
 bool save(double lat, double lon);
 

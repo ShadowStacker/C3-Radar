@@ -21,18 +21,7 @@ constexpr char kKeyPlaceCount[] = "placeCount";
 double s_lat = config::kDefaultRadarLat;
 double s_lon = config::kDefaultRadarLon;
 
-bool parseCoord(const char* text, double* out) {
-  if (text == nullptr || text[0] == '\0') {
-    return false;
-  }
-  char* end = nullptr;
-  const double v = strtod(text, &end);
-  if (end == text || (end != nullptr && *end != '\0')) {
-    return false;
-  }
-  *out = v;
-  return true;
-}
+bool parseCoord(const char* text, double* out) { return parseNumber(text, out); }
 
 bool validLatLon(double lat, double lon) {
   return lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0;
@@ -112,6 +101,42 @@ bool save(double lat, double lon) {
     persist(lat, lon);
     Serial.printf("Radar location saved: %.6f, %.6f\n", lat, lon);
   }
+  return true;
+}
+
+bool parseNumber(const char* text, double* out) {
+  if (text == nullptr) {
+    return false;
+  }
+  const char* p = text;
+  while (*p == ' ' || *p == '\t') {
+    ++p;
+  }
+  bool negative = false;
+  if (*p == '+' || *p == '-') {
+    negative = *p == '-';
+    ++p;
+  }
+  double value = 0.0;
+  int digits = 0;
+  for (; *p >= '0' && *p <= '9'; ++p, ++digits) {
+    value = value * 10.0 + (*p - '0');
+  }
+  if (*p == '.' || *p == ',') {  // some keyboards type a decimal comma
+    ++p;
+    double scale = 0.1;
+    for (; *p >= '0' && *p <= '9'; ++p, ++digits) {
+      value += (*p - '0') * scale;
+      scale *= 0.1;
+    }
+  }
+  while (*p == ' ' || *p == '\t') {
+    ++p;
+  }
+  if (digits == 0 || digits > 18 || *p != '\0') {
+    return false;
+  }
+  *out = negative ? -value : value;
   return true;
 }
 
