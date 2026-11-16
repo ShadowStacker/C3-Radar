@@ -4,3 +4,7 @@ release/
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# PC preview build output
+tools/host_preview/.obj/
+tools/host_preview/host_preview

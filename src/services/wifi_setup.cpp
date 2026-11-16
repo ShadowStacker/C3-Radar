@@ -96,6 +96,9 @@ char s_military_checkbox_attrs[32] = "type=\"checkbox\"";
 WiFiManagerParameter s_param_military("mil_only", "Show military aircraft only", "T", 2,
                                       s_military_checkbox_attrs, WFM_LABEL_AFTER);
 
+WiFiManagerParameter s_param_name("dev_name", "Device name", "",
+                                  services::device::kMaxNameLen);
+
 constexpr int kPortParamLen = 6;
 WiFiManagerParameter s_param_port("http_port", "Web server port (after setup)", "80",
                                   kPortParamLen,
@@ -103,6 +106,8 @@ WiFiManagerParameter s_param_port("http_port", "Web server port (after setup)", 
 
 /** Port the LAN web server is currently listening on (0 = not running). */
 uint16_t s_lan_port = 0;
+/** mDNS name it is announced under. */
+char s_lan_host[40] = "";
 
 void refreshPortalParamValues() {
   char lat_buf[kCoordParamLen + 1];
@@ -124,6 +129,7 @@ void refreshPortalParamValues() {
   snprintf(port_buf, sizeof(port_buf), "%u",
            static_cast<unsigned>(services::device::httpPort()));
   s_param_port.setValue(port_buf, kPortParamLen);
+  s_param_name.setValue(services::device::name(), services::device::kMaxNameLen);
 }
 
 void onPortalParamsSaved() {
@@ -137,6 +143,7 @@ void onPortalParamsSaved() {
   if (!services::device::setHttpPort(atol(s_param_port.getValue()))) {
     Serial.println("Invalid web server port in portal - keeping previous port");
   }
+  services::device::setName(s_param_name.getValue());
   services::adsb::requestRefresh();
 
   refreshPortalParamValues();
@@ -150,6 +157,7 @@ void attachPortalParams(WiFiManager& wm) {
   wm.addParameter(&s_param_runways);
   wm.addParameter(&s_param_military);
   wm.addParameter(&s_param_port);
+  wm.addParameter(&s_param_name);
   wm.setSaveParamsCallback(onPortalParamsSaved);
 }
 
@@ -236,10 +244,10 @@ void onConfigPortalApStarted(WiFiManager*) {
   ui::radarDisplayHidden();
   statusScreenPortal();
 #ifdef WM_MDNS
-  if (MDNS.begin(config::kPortalHostname)) {
+  if (MDNS.begin(services::device::hostname())) {
     MDNS.addService("http", "tcp", 80);
     Serial.printf("Setup portal: http://%s.local (or http://%s)\n",
-                  config::kPortalHostname, config::kPortalIp);
+                  services::device::hostname(), config::kPortalIp);
   } else {
     Serial.printf("Setup portal: http://%s (mDNS unavailable)\n", config::kPortalIp);
   }
@@ -260,7 +268,7 @@ void ensureWifiManager() {
   s_wm.setConfigPortalTimeout(config::kWifiPortalTimeoutSec);
   s_wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
                            IPAddress(255, 255, 255, 0));
-  s_wm.setHostname(config::kPortalHostname);
+  s_wm.setHostname(services::device::hostname());
   s_wm.setAPCallback(onConfigPortalApStarted);
   s_wm.setTitle("Plane Radar");
   // Runs each time the manager (re)creates its web server, before it adds its
@@ -287,7 +295,7 @@ void startLanWebPortal() {
   s_wm.setHttpPort(port);
 #ifdef WM_MDNS
   MDNS.end();
-  if (MDNS.begin(config::kPortalHostname)) {
+  if (MDNS.begin(services::device::hostname())) {
     MDNS.addService("http", "tcp", port);
   }
 #endif
@@ -295,12 +303,13 @@ void startLanWebPortal() {
   s_wm.startWebPortal();
   s_lan_routes = false;
   s_lan_port = port;
+  strncpy(s_lan_host, services::device::hostname(), sizeof(s_lan_host) - 1);
   if (port == 80) {
-    Serial.printf("Web page: http://%s.local or http://%s\n", config::kPortalHostname,
+    Serial.printf("Web page: http://%s.local or http://%s\n", services::device::hostname(),
                   WiFi.localIP().toString().c_str());
   } else {
     Serial.printf("Web page: http://%s.local:%u or http://%s:%u\n",
-                  config::kPortalHostname, static_cast<unsigned>(port),
+                  services::device::hostname(), static_cast<unsigned>(port),
                   WiFi.localIP().toString().c_str(), static_cast<unsigned>(port));
   }
 }
@@ -418,7 +427,7 @@ bool openConfigPortal() {
   s_wm.setConfigPortalBlocking(false);
   s_wm.setHttpPort(80);  // the captive portal only works on the default port
   s_lan_routes = false;
-  s_wm.startConfigPortal(config::kPortalApName);
+  s_wm.startConfigPortal(services::device::setupApName());
   while (s_wm.getConfigPortalActive()) {
     bootButtonPollLongPress();
     if (s_wm.process()) {
@@ -500,10 +509,12 @@ bool wifiReconnect() {
 
 void wifiLoop() {
   ensureWifiManager();
-  // Port changed (web page or portal form): restart the server on the new one.
+  // Port or device name changed (web page or portal form): restart the server on the new one.
   // Done here, outside the request handler, so the reply has already gone out.
-  const bool port_changed = services::web::consumePortChange() ||
-                            (s_lan_port != 0 && s_lan_port != services::device::httpPort());
+  const bool port_changed =
+      services::web::consumeRestartRequest() ||
+      (s_lan_port != 0 && (s_lan_port != services::device::httpPort() ||
+                           strcmp(s_lan_host, services::device::hostname()) != 0));
   if (port_changed && s_wm.getWebPortalActive()) {
     delay(150);  // let the HTTP response drain
     stopLanWebPortal();

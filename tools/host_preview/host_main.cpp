@@ -11,6 +11,8 @@
 #include "hardware/display.h"
 #include "hardware/display_font.h"
 #include "services/adsb_store.h"
+#include "services/device_settings.h"
+#include "ui/map_layer.h"
 #include "services/radar_location.h"
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
@@ -88,6 +90,14 @@ bool feed(const std::string& json_path, bool military_only) {
 
 }  // namespace
 
+// --- stand-ins for the device identity (normally derived from the chip's MAC)
+namespace services::device {
+const char* name() { return "plane-radar-a1b2"; }
+const char* hostname() { return "plane-radar-a1b2"; }
+const char* hostUrl() { return "plane-radar-a1b2.local"; }
+const char* setupApName() { return "PlaneRadar-A1B2"; }
+}  // namespace services::device
+
 bool displayFontInit() { return true; }
 const lgfx::IFont* uiFont(UiFont font) { return &g_fonts[static_cast<size_t>(font)]; }
 
@@ -128,6 +138,19 @@ int main(int argc, char** argv) {
   ui::radar::rangeInit();
   ui::radar::rangeSet(static_cast<uint8_t>(std::atoi(argv[5])));
   ui::radar::setMilitaryOnly(mil);
+  // Optional map: C3_MAP=<file made by the web page's map builder>,
+  // C3_MAP_LAYERS=<toggle bit mask>.
+  static std::string map_blob;
+  if (const char* map_path = std::getenv("C3_MAP")) {
+    map_blob = slurp(map_path);
+    const bool ok = ui::map::attach(reinterpret_cast<const uint8_t*>(map_blob.data()),
+                                    map_blob.size());
+    std::printf("map %s: %s (%u bytes)\n", map_path, ok ? "ok" : "REJECTED",
+                static_cast<unsigned>(map_blob.size()));
+  }
+  if (const char* layers = std::getenv("C3_MAP_LAYERS")) {
+    ui::radar::setMapLayers(static_cast<uint8_t>(std::atoi(layers)));
+  }
   services::adsb::init();
   ui::radarDisplayInit();
 

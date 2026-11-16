@@ -13,9 +13,11 @@
 #include "hardware/display_font.h"
 #include "services/adsb_client.h"
 #include "services/radar_location.h"
+#include "ui/map_layer.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
 #include "ui/runway_overlay.h"
+#include "ui/strip_canvas.h"
 
 /*
  * Rendering model
@@ -36,8 +38,6 @@ namespace {
 using services::adsb::Aircraft;
 namespace icons = data::aircraft_icons;
 
-constexpr int kW = radar::kSize;
-constexpr int kBandH = radar::kBandHeight;
 constexpr int kCx = radar::kCenterX;
 constexpr int kCy = radar::kCenterY;
 constexpr int kRingR = radar::kGridOuterRadius;
@@ -54,160 +54,9 @@ constexpr int kTagArrowW = 10;
 /** Tags must stay inside this radius so the round glass does not clip them. */
 constexpr int kTagSafeRadius = kCx - 4;
 
-// ---------------------------------------------------------------- strip canvas
+using namespace canvas;
 
-LGFX_Sprite s_band(&tft);
-uint16_t* s_px = nullptr;  // strip pixels: big-endian RGB565, as the panel takes them
-int s_by = 0;              // screen y of the strip's first row
 bool s_band_ready = false;
-
-inline uint16_t swap16(uint16_t v) { return __builtin_bswap16(v); }
-
-/** Blend fg over bg; a = 0..32. */
-inline uint16_t mix565(uint16_t bg, uint16_t fg, uint32_t a) {
-  const uint32_t b = (bg | (static_cast<uint32_t>(bg) << 16)) & 0x07E0F81Fu;
-  const uint32_t f = (fg | (static_cast<uint32_t>(fg) << 16)) & 0x07E0F81Fu;
-  const uint32_t r = ((b * (32u - a) + f * a) >> 5) & 0x07E0F81Fu;
-  return static_cast<uint16_t>(r | (r >> 16));
-}
-
-/** True if screen rows y0..y1 (inclusive) touch the strip being drawn. */
-inline bool rowsVisible(int y0, int y1) {
-  return y1 >= s_by && y0 < s_by + kBandH;
-}
-
-inline void blendPx(int x, int y, uint16_t color, uint32_t a) {
-  const int ly = y - s_by;
-  if (a == 0 || static_cast<unsigned>(x) >= static_cast<unsigned>(kW) ||
-      static_cast<unsigned>(ly) >= static_cast<unsigned>(kBandH)) {
-    return;
-  }
-  uint16_t* p = &s_px[ly * kW + x];
-  *p = swap16(a >= 32 ? color : mix565(swap16(*p), color, a));
-}
-
-void fillSpan(int x0, int x1, int y, uint16_t color) {
-  const int ly = y - s_by;
-  if (static_cast<unsigned>(ly) >= static_cast<unsigned>(kBandH)) {
-    return;
-  }
-  x0 = std::max(x0, 0);
-  x1 = std::min(x1, kW - 1);
-  const uint16_t raw = swap16(color);
-  uint16_t* p = &s_px[ly * kW + x0];
-  for (int x = x0; x <= x1; ++x) {
-    *p++ = raw;
-  }
-}
-
-void blendRect(int x, int y, int w, int h, uint16_t color, uint32_t a) {
-  if (!rowsVisible(y, y + h - 1)) {
-    return;
-  }
-  const int x0 = std::max(x, 0);
-  const int x1 = std::min(x + w, kW);
-  const int y0 = std::max(y, s_by);
-  const int y1 = std::min(y + h, s_by + kBandH);
-  for (int yy = y0; yy < y1; ++yy) {
-    uint16_t* p = &s_px[(yy - s_by) * kW + x0];
-    for (int xx = x0; xx < x1; ++xx, ++p) {
-      *p = swap16(mix565(swap16(*p), color, a));
-    }
-  }
-}
-
-uint32_t isqrt32(uint32_t v) {
-  uint32_t res = 0;
-  uint32_t bit = 1u << 30;
-  while (bit > v) {
-    bit >>= 2;
-  }
-  while (bit != 0) {
-    if (v >= res + bit) {
-      v -= res + bit;
-      res = (res >> 1) + bit;
-    } else {
-      res >>= 1;
-    }
-    bit >>= 2;
-  }
-  return res;
-}
-
-void fillDisc(int cx, int cy, int r, uint16_t color) {
-  if (!rowsVisible(cy - r, cy + r)) {
-    return;
-  }
-  const int y0 = std::max(cy - r, s_by);
-  const int y1 = std::min(cy + r, s_by + kBandH - 1);
-  for (int y = y0; y <= y1; ++y) {
-    const int dy = y - cy;
-    const int half = static_cast<int>(isqrt32(static_cast<uint32_t>(r * r - dy * dy)));
-    fillSpan(cx - half, cx + half, y, color);
-  }
-}
-
-/**
- * Anti-aliased circle outline. half_w16 is half the stroke width in 1/16 px.
- * Distance to the circle is approximated as (d^2 - r^2) / 2r, which is exact
- * enough within a couple of pixels of the stroke and needs no square root per
- * pixel.
- */
-void ring(int cx, int cy, int r, int half_w16, uint16_t color, uint32_t a_max = 32) {
-  const int reach = (half_w16 + 15) / 16 + 1;
-  if (r <= reach || !rowsVisible(cy - r - reach, cy + r + reach)) {
-    return;
-  }
-  const int r_out = r + reach;
-  const int r_in = r - reach;
-  const int y0 = std::max(cy - r_out, s_by);
-  const int y1 = std::min(cy + r_out, s_by + kBandH - 1);
-  const int r_sq = r * r;
-  for (int y = y0; y <= y1; ++y) {
-    const int dy = y - cy;
-    const int dy_sq = dy * dy;
-    const int x_out = static_cast<int>(isqrt32(static_cast<uint32_t>(r_out * r_out - dy_sq)));
-    const int x_in = (dy_sq < r_in * r_in)
-                         ? static_cast<int>(isqrt32(static_cast<uint32_t>(r_in * r_in - dy_sq)))
-                         : 0;
-    for (int dx = x_in; dx <= x_out; ++dx) {
-      const int err16 = std::abs(dx * dx + dy_sq - r_sq) * 8 / r;  // |dist - r| * 16
-      int cov = half_w16 + 8 - err16;
-      if (cov <= 0) {
-        continue;
-      }
-      if (cov > 16) {
-        cov = 16;
-      }
-      const uint32_t a = static_cast<uint32_t>(cov) * a_max / 16u;
-      blendPx(cx + dx, y, color, a);
-      if (dx != 0) {
-        blendPx(cx - dx, y, color, a);
-      }
-    }
-  }
-}
-
-/** Anti-aliased filled dot; r16 = radius in 1/16 px. */
-void spot(int cx, int cy, int r16, uint16_t color, uint32_t a_max = 32) {
-  const int reach = (r16 + 15) / 16 + 1;
-  if (!rowsVisible(cy - reach, cy + reach)) {
-    return;
-  }
-  for (int dy = -reach; dy <= reach; ++dy) {
-    for (int dx = -reach; dx <= reach; ++dx) {
-      const int d16 = static_cast<int>(isqrt32(static_cast<uint32_t>((dx * dx + dy * dy) * 256)));
-      int cov = r16 + 8 - d16;
-      if (cov <= 0) {
-        continue;
-      }
-      if (cov > 16) {
-        cov = 16;
-      }
-      blendPx(cx + dx, cy + dy, color, static_cast<uint32_t>(cov) * a_max / 16u);
-    }
-  }
-}
 
 void wideLine(int x0, int y0, int x1, int y1, float half_w, uint16_t color) {
   const int pad = static_cast<int>(half_w) + 2;
@@ -313,10 +162,14 @@ struct StaticKey {
   double lon = 1000.0;
   uint8_t range_index = 0xFF;
   bool runways = false;
+  bool miles = false;
+  uint8_t map_layers = 0;
+  uint32_t map_generation = 0xFFFFFFFFu;
 
   bool operator==(const StaticKey& o) const {
     return lat == o.lat && lon == o.lon && range_index == o.range_index &&
-           runways == o.runways;
+           runways == o.runways && miles == o.miles &&
+           map_layers == o.map_layers && map_generation == o.map_generation;
   }
 };
 
@@ -331,6 +184,11 @@ runway::Label s_runway_labels[runway::kMaxLabels];
 size_t s_runway_count = 0;
 size_t s_runway_label_count = 0;
 StaticKey s_static_key;
+
+/** Place names / airfield codes from the map that made it onto the screen. */
+constexpr size_t kMaxMapLabels = 14;
+map::LabelCandidate s_map_labels[kMaxMapLabels];
+size_t s_map_label_count = 0;
 
 constexpr int kTickCount = 36;
 TickMark s_ticks[kTickCount];
@@ -650,17 +508,83 @@ void buildTicks() {
   s_ticks_ready = true;
 }
 
+Rect centredRect(int cx, int cy, int w, int h) {
+  return Rect{static_cast<int16_t>(cx - w / 2), static_cast<int16_t>(cy - h / 2),
+              static_cast<int16_t>(w), static_cast<int16_t>(h)};
+}
+
+/**
+ * Choose which map labels to show: most important first, skipping any that
+ * would print over another label, the centre mark or the range label.
+ */
+void placeMapLabels() {
+  s_map_label_count = 0;
+  static map::LabelCandidate candidates[48];
+  const size_t n = map::collectLabels(candidates, 48);
+  if (n == 0) {
+    return;
+  }
+
+  const int text_h = fontHeight(UiFont::kSmall14);
+  Rect taken[kMaxMapLabels + runway::kMaxLabels + 2];
+  size_t taken_count = 0;
+  taken[taken_count++] = centredRect(kCx, kCy, 18, 18);
+  taken[taken_count++] = centredRect(kCx + kScaleLabelRadius, kCy, 56, text_h + 4);
+  for (size_t i = 0; i < s_runway_label_count; ++i) {
+    const runway::Label& l = s_runway_labels[i];
+    taken[taken_count++] = centredRect(
+        l.x, l.y - text_h / 2, textWidth(l.ident, UiFont::kSmall14) + 4, text_h);
+  }
+
+  for (size_t i = 0; i < n && s_map_label_count < kMaxMapLabels; ++i) {
+    const map::LabelCandidate& c = candidates[i];
+    if (c.airfield) {
+      // The built-in database already labels the large airports.
+      bool duplicate = false;
+      for (size_t r = 0; r < s_runway_label_count; ++r) {
+        duplicate = duplicate || strcmp(s_runway_labels[r].ident, c.text) == 0;
+      }
+      if (duplicate) {
+        continue;
+      }
+    }
+    const int w = textWidth(c.text, UiFont::kSmall14) + 6;
+    const Rect r = centredRect(c.x, c.y - 3 - text_h / 2, w, text_h + 4);
+    const int reach = kRingR - 4;
+    if (distSqFromCenter(r.x, r.y) > reach * reach ||
+        distSqFromCenter(r.x + r.w, r.y) > reach * reach ||
+        distSqFromCenter(r.x, r.y + r.h) > reach * reach ||
+        distSqFromCenter(r.x + r.w, r.y + r.h) > reach * reach) {
+      continue;
+    }
+    bool clash = false;
+    for (size_t t = 0; t < taken_count && !clash; ++t) {
+      clash = rectsOverlap(r, taken[t]);
+    }
+    if (clash) {
+      continue;
+    }
+    taken[taken_count++] = r;
+    s_map_labels[s_map_label_count++] = c;
+  }
+}
+
 void refreshStaticLayer() {
   StaticKey key;
   key.lat = services::location::lat();
   key.lon = services::location::lon();
   key.range_index = radar::rangeIndex();
   key.runways = radar::showRunways();
+  key.miles = radar::useMiles();
+  key.map_layers = radar::mapLayers();
+  key.map_generation = map::generation();
   if (key == s_static_key) {
     return;
   }
   s_static_key = key;
   runway::collect(s_runways, &s_runway_count, s_runway_labels, &s_runway_label_count);
+  map::prepare(key.map_layers);
+  placeMapLabels();
 }
 
 void sortItemsNearFirst() {
@@ -826,6 +750,7 @@ void buildFrame() {
 void drawGrid() {
   s_band.fillScreen(radar::kColorBezel);
   fillDisc(kCx, kCy, kRingR, radar::kColorScope);
+  map::drawLines();
 
   // Crosshair first so the rings cross over it cleanly.
   if (rowsVisible(kCy, kCy)) {
@@ -862,6 +787,20 @@ void drawRunways() {
     const runway::Label& l = s_runway_labels[i];
     drawText(l.ident, l.x, l.y, UiFont::kSmall14, radar::kColorRunwayLabel,
              textdatum_t::bottom_center);
+  }
+}
+
+void drawMapLabels() {
+  for (size_t i = 0; i < s_map_label_count; ++i) {
+    const map::LabelCandidate& l = s_map_labels[i];
+    if (l.airfield) {
+      drawText(l.text, l.x, l.y - 3, UiFont::kSmall14, radar::kColorRunwayLabel,
+               textdatum_t::bottom_center);
+      continue;
+    }
+    const uint16_t color = l.rank >= 2 ? radar::kColorTownMajor : radar::kColorTownMinor;
+    spot(l.x, l.y, 24, color, 26);
+    drawText(l.text, l.x, l.y - 3, UiFont::kSmall14, color, textdatum_t::bottom_center);
   }
 }
 
@@ -995,6 +934,7 @@ void renderBand(int band) {
   s_by = band * kBandH;
   drawGrid();
   drawRunways();
+  drawMapLabels();
   drawTrails();
   drawCenterMarker();
   drawScaleAndBadge();

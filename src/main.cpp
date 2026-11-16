@@ -9,6 +9,7 @@
 #include "hardware/display.h"
 #include "services/adsb_client.h"
 #include "services/device_settings.h"
+#include "services/map_store.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_display.h"
@@ -95,6 +96,7 @@ void setup() {
   displayInit();
   // Grab the strip buffer while the heap is still unfragmented.
   ui::radarDisplayInit();
+  services::mapstore::init();
   if (wifiShowsSetupScreenOnBoot()) {
     statusScreenPortal();
   }

@@ -16,6 +16,7 @@ flags=(-std=gnu++17 -O2 -w -DPLANE_RADAR_HOST -DLGFX_LINUX_FB
 
 srcs=("$here/host_main.cpp"
       "$root/src/ui/radar_display.cpp" "$root/src/ui/runway_overlay.cpp"
+      "$root/src/ui/strip_canvas.cpp" "$root/src/ui/map_layer.cpp"
       "$root/src/ui/radar_range.cpp" "$root/src/ui/status_screens.cpp"
       "$root/src/services/radar_location.cpp" "$root/src/services/adsb_store.cpp"
       "$root/src/data/large_airports_data.cpp" "$root/src/data/aircraft_icons_data.cpp"

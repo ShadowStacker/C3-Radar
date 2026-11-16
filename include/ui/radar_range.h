@@ -52,6 +52,9 @@ bool militaryOnly();
 void setUseMiles(bool on);
 void setShowRunways(bool on);
 void setMilitaryOnly(bool on);
+/** Map layer switches: bit mask of ui::map::Toggle. */
+uint8_t mapLayers();
+void setMapLayers(uint8_t mask);
 void saveMilitaryFromPortal(const char* checkbox_value);
 /** WiFi portal checkbox: "T" = miles, otherwise km. */
 void saveMilesFromPortal(const char* checkbox_value);

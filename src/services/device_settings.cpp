@@ -3,6 +3,10 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
+#include <cctype>
+#include <cstdio>
+#include <cstring>
+
 #include "config.h"
 
 namespace services::device {
@@ -11,11 +15,72 @@ namespace {
 
 constexpr char kNamespace[] = "device";
 constexpr char kKeyPort[] = "httpPort";
+constexpr char kKeyName[] = "name";
 constexpr char kKeyBright[] = "bright";
 constexpr char kKeyRotation[] = "rot";
 constexpr char kKeyInvert[] = "invert";
 constexpr char kKeySwapRb[] = "swapRB";
 constexpr uint8_t kMinBrightness = 5;
+
+char s_name[kMaxNameLen + 1] = "";
+char s_hostname[40] = "";
+char s_host_url[48] = "";
+char s_ap_name[24] = "";
+char s_chip_tag[5] = "0000";
+
+/** Keep printable ASCII (the display fonts cover nothing else), trim spaces. */
+void sanitizeName(const char* text, char* out, size_t out_len) {
+  size_t n = 0;
+  for (const char* p = text; p != nullptr && *p != '\0' && n + 1 < out_len; ++p) {
+    const char c = *p;
+    if (c < 0x20 || c > 0x7E || c == '<' || c == '>' || c == '"' || c == '&') {
+      continue;
+    }
+    if (c == ' ' && n == 0) {
+      continue;
+    }
+    out[n++] = c;
+  }
+  while (n > 0 && out[n - 1] == ' ') {
+    --n;
+  }
+  out[n] = '\0';
+}
+
+/** Rebuild the hostname from the current name. */
+void deriveHostname() {
+  size_t n = 0;
+  bool dash = false;
+  for (const char* p = s_name; *p != '\0' && n + 1 < 32; ++p) {
+    char c = *p;
+    if (c >= 'A' && c <= 'Z') {
+      c = static_cast<char>(c - 'A' + 'a');
+    }
+    const bool keep = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+    if (keep) {
+      if (dash && n > 0) {
+        s_hostname[n++] = '-';
+      }
+      dash = false;
+      s_hostname[n++] = c;
+    } else {
+      dash = true;
+    }
+  }
+  s_hostname[n] = '\0';
+  if (n == 0) {
+    snprintf(s_hostname, sizeof(s_hostname), "%s-%s", config::kPortalHostname, s_chip_tag);
+  }
+  snprintf(s_host_url, sizeof(s_host_url), "%s.local", s_hostname);
+}
+
+void applyName(const char* text) {
+  sanitizeName(text, s_name, sizeof(s_name));
+  if (s_name[0] == '\0') {
+    snprintf(s_name, sizeof(s_name), "%s-%s", config::kPortalHostname, s_chip_tag);
+  }
+  deriveHostname();
+}
 
 uint16_t s_port = config::kDefaultHttpPort;
 uint8_t s_brightness = 255;
@@ -36,10 +101,22 @@ void withPrefs(Fn fn) {
 }  // namespace
 
 void init() {
+  // Last two bytes of the factory MAC make names unique per chip.
+  const uint64_t mac = ESP.getEfuseMac();
+  snprintf(s_chip_tag, sizeof(s_chip_tag), "%02x%02x",
+           static_cast<unsigned>((mac >> 32) & 0xFF),
+           static_cast<unsigned>((mac >> 40) & 0xFF));
+  snprintf(s_ap_name, sizeof(s_ap_name), "PlaneRadar-%c%c%c%c", toupper(s_chip_tag[0]),
+           toupper(s_chip_tag[1]), toupper(s_chip_tag[2]), toupper(s_chip_tag[3]));
+  applyName("");
+
   Preferences prefs;
   if (!prefs.begin(kNamespace, true)) {
     return;
   }
+  char stored[kMaxNameLen + 1] = "";
+  prefs.getString(kKeyName, stored, sizeof(stored));
+  applyName(stored);
   const uint16_t port = prefs.getUShort(kKeyPort, config::kDefaultHttpPort);
   s_port = port != 0 ? port : config::kDefaultHttpPort;
   const uint8_t bright = prefs.getUChar(kKeyBright, 255);
@@ -49,6 +126,25 @@ void init() {
   s_swap_rb = prefs.getBool(kKeySwapRb, config::kDisplayRgbOrder);
   prefs.end();
 }
+
+const char* name() { return s_name; }
+
+void setName(const char* text) {
+  char previous[kMaxNameLen + 1];
+  strncpy(previous, s_name, sizeof(previous));
+  applyName(text);
+  if (strcmp(previous, s_name) == 0) {
+    return;
+  }
+  withPrefs([](Preferences& p) { p.putString(kKeyName, s_name); });
+  Serial.printf("Device name: %s (%s)\n", s_name, s_host_url);
+}
+
+const char* hostname() { return s_hostname; }
+
+const char* hostUrl() { return s_host_url; }
+
+const char* setupApName() { return s_ap_name; }
 
 uint16_t httpPort() { return s_port; }
 
@@ -114,6 +210,7 @@ void reset() {
   s_invert = config::kDisplayInvert;
   s_swap_rb = config::kDisplayRgbOrder;
   withPrefs([](Preferences& p) { p.clear(); });
+  applyName("");
 }
 
 }  // namespace services::device

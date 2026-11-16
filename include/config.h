@@ -4,18 +4,20 @@
 
 #include <driver/gpio.h>
 
-#define PLANE_RADAR_VERSION "0.9.0"
+#define PLANE_RADAR_VERSION "0.10.0"
 
 namespace config {
 
 constexpr char kFirmwareVersion[] = PLANE_RADAR_VERSION;
 
 // --- Wi-Fi portal ---
-constexpr char kPortalApName[] = "PlaneRadar-Setup";
 constexpr char kPortalIp[] = "192.168.4.1";
-/** mDNS host (no ".local" suffix); browser: http://plane-radar.local */
+/**
+ * Prefix of the default device name / mDNS host: "plane-radar-xxxx", where
+ * xxxx comes from the chip's MAC so several radars can share a network. The
+ * name can be changed on the web page (services::device::name()).
+ */
 constexpr char kPortalHostname[] = "plane-radar";
-constexpr char kPortalHostUrl[] = "plane-radar.local";
 
 /** Per-attempt STA connect wait (ms); retried kWifiConnectAttempts times. */
 constexpr unsigned long kWifiConnectAttemptMs = 15000;

@@ -10,6 +10,7 @@
 #include "config.h"
 #include "hardware/display.h"
 #include "hardware/display_font.h"
+#include "services/device_settings.h"
 #include "ui/radar_theme.h"
 
 namespace {
@@ -50,6 +51,20 @@ int lineHeight(UiFont font) {
   tft.setFont(uiFont(font));
   tft.setTextSize(1);
   return tft.fontHeight();
+}
+
+/** Largest font, starting from `wanted`, in which `text` fits the round screen. */
+UiFont fitFont(const char* text, UiFont wanted) {
+  constexpr int kMaxWidth = 322;
+  int f = static_cast<int>(wanted);
+  while (f > 0) {
+    tft.setFont(uiFont(static_cast<UiFont>(f)));
+    if (tft.textWidth(text) <= kMaxWidth) {
+      break;
+    }
+    --f;
+  }
+  return static_cast<UiFont>(f);
 }
 
 /** Vertically centred block of centred lines on a solid background. */
@@ -165,13 +180,13 @@ void statusScreenConnectingTick() {
 
 void statusScreenConnected(const char* ssid, const char* ip, uint16_t http_port) {
   char url[40];
-  char host[48];
+  char host[64];
   if (http_port == 80) {
     snprintf(url, sizeof(url), "%s", ip);
-    snprintf(host, sizeof(host), "%s", config::kPortalHostUrl);
+    snprintf(host, sizeof(host), "%s", services::device::hostUrl());
   } else {
     snprintf(url, sizeof(url), "%s:%u", ip, static_cast<unsigned>(http_port));
-    snprintf(host, sizeof(host), "%s:%u", config::kPortalHostUrl,
+    snprintf(host, sizeof(host), "%s:%u", services::device::hostUrl(),
              static_cast<unsigned>(http_port));
   }
   strncpy(s_connecting_ssid, (ssid != nullptr && ssid[0] != '\0') ? ssid : "Wi-Fi",
@@ -185,7 +200,7 @@ void statusScreenConnected(const char* ssid, const char* ip, uint16_t http_port)
       {"", UiFont::kSmall14, kColorDim},
       {"Web page:", UiFont::kCardinal20, kColorDim},
       {url, UiFont::kTitle26, config::kTextOnBlack},
-      {host, UiFont::kCardinal20, kColorDim},
+      {host, fitFont(host, UiFont::kCardinal20), kColorDim},
   };
   drawTextBlock(config::kColorBlack, lines, sizeof(lines) / sizeof(lines[0]));
   s_connecting_text_drawn = false;
@@ -196,10 +211,9 @@ void statusScreenPortal() {
   const TextLine lines[] = {
       {"Wi-Fi setup", UiFont::kTitle26, fg},
       {"1. Join network:", UiFont::kBody22, fg},
-      {config::kPortalApName, UiFont::kTitle26, fg},
+      {services::device::setupApName(), UiFont::kTitle26, fg},
       {"2. Open in browser:", UiFont::kBody22, fg},
-      {config::kPortalHostUrl, UiFont::kTitle26, fg},
-      {"or 192.168.4.1", UiFont::kBody22, fg},
+      {"192.168.4.1", UiFont::kTitle26, fg},
   };
   drawTextBlock(config::kColorYellow, lines, sizeof(lines) / sizeof(lines[0]));
 }

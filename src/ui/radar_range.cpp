@@ -1,5 +1,6 @@
 #include "ui/radar_range.h"
 
+#include "ui/map_layer.h"
 #include "ui/radar_theme.h"
 
 #include <Arduino.h>
@@ -17,6 +18,7 @@ constexpr char kPrefsRangeKey[] = "rangeIdx";
 constexpr char kPrefsMilesKey[] = "useMiles";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
 constexpr char kPrefsMilitaryKey[] = "milOnly";
+constexpr char kPrefsMapLayersKey[] = "mapLayers";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
 constexpr float kKmPerMile = 1.609344f;
 
@@ -25,6 +27,7 @@ uint8_t s_range_index = kDefaultRangeIndex;
 bool s_use_miles = false;
 bool s_show_runways = true;
 bool s_military_only = false;
+uint8_t s_map_layers = ui::map::kToggleDefault;
 
 void saveMilitaryOnly() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
@@ -82,6 +85,8 @@ void rangeInit() {
   s_use_miles = s_prefs.getBool(kPrefsMilesKey, false);
   s_show_runways = s_prefs.getBool(kPrefsRunwaysKey, true);
   s_military_only = s_prefs.getBool(kPrefsMilitaryKey, false);
+  s_map_layers = s_prefs.getUChar(kPrefsMapLayersKey, ui::map::kToggleDefault) &
+                 ui::map::kToggleAll;
   s_prefs.end();
 }
 
@@ -117,6 +122,20 @@ bool useMiles() { return s_use_miles; }
 bool showRunways() { return s_show_runways; }
 
 bool militaryOnly() { return s_military_only; }
+
+uint8_t mapLayers() { return s_map_layers; }
+
+void setMapLayers(uint8_t mask) {
+  mask &= ui::map::kToggleAll;
+  if (mask == s_map_layers) {
+    return;
+  }
+  s_map_layers = mask;
+  if (s_prefs.begin(kPrefsNamespace, false)) {
+    s_prefs.putUChar(kPrefsMapLayersKey, s_map_layers);
+    s_prefs.end();
+  }
+}
 
 void setUseMiles(bool on) {
   if (on == s_use_miles) {
@@ -175,7 +194,9 @@ void unitsReset() {
   s_use_miles = false;
   s_show_runways = true;
   s_military_only = false;
+  s_map_layers = ui::map::kToggleDefault;
   if (s_prefs.begin(kPrefsNamespace, false)) {
+    s_prefs.remove(kPrefsMapLayersKey);
     s_prefs.remove(kPrefsMilesKey);
     s_prefs.remove(kPrefsRunwaysKey);
     s_prefs.remove(kPrefsMilitaryKey);

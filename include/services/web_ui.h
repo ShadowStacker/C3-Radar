@@ -11,7 +11,7 @@ namespace services::web {
  */
 void registerRoutes(WebServer& server);
 
-/** True once after the HTTP port was changed: the server must be restarted. */
-bool consumePortChange();
+/** True once after the port or device name changed: the server must be restarted. */
+bool consumeRestartRequest();
 
 }  // namespace services::web

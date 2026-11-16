@@ -16,6 +16,8 @@ C3-Radar is a port of [MatixYo/ESP32-Plane-Radar](https://github.com/MatixYo/ESP
 - **Aircraft silhouettes** — jet, light aircraft and helicopter shapes that point along the heading, coloured by altitude, with a speed line and a short trail.
 - **Readable tags** — callsign, type and altitude with a climb/descent arrow. Tags never overlap: in busy airspace, farther aircraft drop to callsign-only or no tag.
 - **Military aircraft** — always drawn red with a ring, plus a **military-only** switch that hides everything else.
+- **Local map** — coastline, lakes, rivers, borders, motorways, main roads, town names and airfields under the radar, each with its own switch. Downloaded once from OpenStreetMap through the web page.
+- **Several radars on one network** — every unit gets its own name and address.
 - **Web page** — a live copy of the screen, range buttons and every setting, from any phone or computer on your network.
 - **Adjustable web server port** — move the web page off port 80 if you need to.
 - **Easy Wi-Fi setup** — the device opens its own hotspot the first time; no code changes needed.
@@ -71,10 +73,10 @@ esptool.py --chip esp32c3 write_flash 0x0 firmware/c3-radar-merged.bin
 ![Wi-Fi setup, connecting, connected and failure screens](docs/images/status-screens.png)
 
 1. Power the board. The screen turns yellow and shows **Wi-Fi setup**.
-2. On your phone or computer, join the Wi-Fi network **`PlaneRadar-Setup`**.
+2. On your phone or computer, join the Wi-Fi network shown on the screen, **`PlaneRadar-XXXX`** (the last four characters differ per device).
 3. A setup page should open by itself. If it doesn't, browse to `http://192.168.4.1`.
 4. Choose **Configure WiFi**, pick your home network and enter its password.
-5. On the same form, enter your **latitude and longitude** (right-click any spot in Google Maps to copy them). You can also set miles, runways, military-only and the web server port here.
+5. On the same form, enter your **latitude and longitude** (right-click any spot in Google Maps to copy them). You can also set miles, runways, military-only, the web server port and a device name here.
 6. Save. The device restarts its connection, shows **Connected** with its web address for a few seconds, then starts the radar.
 
 ## Reading the display
@@ -93,6 +95,7 @@ esptool.py --chip esp32c3 write_flash 0x0 firmware/c3-radar-merged.bin
 | Tag | Callsign (white), aircraft type (amber), altitude in feet (blue) with ▲ climbing or ▼ descending |
 | Dots on the rim | Aircraft beyond the outer ring, shown at the correct bearing |
 | Teal lines and four-letter codes | Runways and ICAO code of large airports |
+| Thin blue, amber and dashed purple lines, grey names | The map: water, roads, borders and towns (see [The map](#the-map)) |
 | `MIL ONLY` badge | The military-only filter is on |
 | `NO DATA` badge | No aircraft data received for 30 seconds |
 
@@ -103,11 +106,11 @@ Aircraft on the ground are hidden.
 | Action | Effect |
 |---|---|
 | Short press | Next range: 5 → 10 → 15 → 25 km |
-| Hold 3 seconds | Erase Wi-Fi, location and all settings (including the web port), then restart in setup mode |
+| Hold 3 seconds | Erase Wi-Fi, location and all settings (including the name and web port), then restart in setup mode. The stored map is kept. |
 
 ## The web page
 
-Once the radar is on your network, open **`http://plane-radar.local`** or the IP address shown on the **Connected** screen at start-up.
+Once the radar is on your network, open the address shown on the **Connected** screen at start-up: either the IP address or the name, such as `http://plane-radar-a1b2.local`.
 
 <img src="docs/images/web-desktop.png" alt="Web page on a computer" width="640"> <img src="docs/images/web-phone.png" alt="Web page on a phone" width="210">
 
@@ -115,15 +118,44 @@ Once the radar is on your network, open **`http://plane-radar.local`** or the IP
 |---|---|
 | Display | Live copy of the screen, refreshed about every 2 seconds, and the range buttons |
 | Aircraft | Military-only, runways and miles/kilometres switches |
+| Map | Download or remove the map, and a switch for each map layer |
 | Location | Latitude and longitude of the radar centre |
 | Screen | Brightness, rotation, and two colour fixes (invert, swap red/blue) |
-| Network | Web server port, plus links to Wi-Fi setup and device info |
+| Network | Device name, web server port, plus links to Wi-Fi setup and device info |
 
 Changes apply immediately and are remembered after a power cut.
 
+### The map
+
+![Radar with the map layer at 25 km and 10 km](docs/images/display-map.png)
+
+*Rendered with coarse public-domain Natural Earth data; OpenStreetMap gives far more detail.*
+
+1. Set your location first.
+2. On the web page, under **Map**, click **Download map for this location**. Your browser fetches the area (about 40 km in every direction) from OpenStreetMap, shrinks it, and sends it to the radar. The browser needs internet access; it takes from a few seconds to a minute.
+3. Switch layers on and off as you like:
+
+| Switch | Shows | Colour |
+|---|---|---|
+| Coastline and lakes | Sea coast and lakes with a shoreline of 3 km or more | Blue |
+| Rivers and canals | Rivers and canals | Darker blue |
+| Borders | Country and state / province borders | Dashed purple |
+| Motorways | Motorways | Amber |
+| Main roads | Trunk roads that are not motorways (off by default) | Brown |
+| Town names | Cities and towns; villages too at the 5 and 10 km ranges | Grey |
+| Airfields | Every runway and airfield code in the area, not just large airports | Teal |
+
+The map is kept in the device's flash memory and survives power cuts and firmware updates. If you move the radar more than 30 km, download the map again. Busy areas are simplified automatically to fit the roughly 0.9 MB of storage. Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+
+### More than one radar
+
+Each device names itself `plane-radar-xxxx`, using four characters from its chip, so two radars never share an address or a setup hotspot. To give one a friendlier name, enter it under **Network → Device name**: "Kitchen Radar" becomes `http://kitchen-radar.local`. Both can stay on port 80, because each has its own IP address.
+
+adsb.fi allows about one request per second from your home connection. Each radar asks every 5 seconds, so a handful is fine.
+
 ### Changing the web server port
 
-Enter a port from 1 to 65535 under **Network** and click **Change port**. The web server restarts and your browser follows it to the new address, for example `http://plane-radar.local:8080`.
+Enter a port from 1 to 65535 under **Network** and click **Change port**. The web server restarts and your browser follows it to the new address, for example `http://plane-radar-a1b2.local:8080`.
 
 - The setup hotspot always uses port 80.
 - The **Connected** screen at start-up shows the current address and port.
@@ -141,7 +173,7 @@ adsb.fi marks aircraft that its database lists as military. With the switch on, 
 | Colours look like a photo negative | Web page → Screen → **Invert colours** |
 | Red and blue are swapped | Web page → Screen → **Swap red / blue** |
 | Picture is sideways or upside down | Web page → Screen → **Rotation** |
-| `plane-radar.local` doesn't open | Use the IP address from the **Connected** screen or your router's device list; add `:port` if you changed the port |
+| The `.local` address doesn't open | Use the IP address from the **Connected** screen or your router's device list; add `:port` if you changed the port |
 | No aircraft | Check the location is right, try the 25 km range, and make sure military-only is off |
 | `NO DATA` badge | The device can't reach adsb.fi; check your internet connection |
 | Stuck on the yellow **Could not connect** screen | Hold **BOOT** for 3 seconds and run setup again |
@@ -176,6 +208,7 @@ Pushing a tag such as `v1.0.0` makes GitHub Actions build the firmware and attac
 | `include/config.h` | Pins, default location, timings |
 | `include/ui/radar_theme.h` | Layout and colours |
 | `src/ui/radar_display.cpp` | Radar drawing |
+| `src/ui/map_layer.cpp`, `src/services/map_store.cpp` | Map drawing and flash storage |
 | `src/services/web_ui.cpp`, `web_page.h` | Web page and its API |
 | `src/services/adsb_client.cpp`, `adsb_store.cpp` | adsb.fi download and parsing |
 | `src/services/wifi_setup.cpp` | Wi-Fi setup and web server start-up |
@@ -214,6 +247,8 @@ curl -o snapshot.json "https://opendata.adsb.fi/api/v3/lat/40.64/lon/-73.78/dist
 mkdir -p out && tools/host_preview/host_preview data out 40.64 -73.78 3 0 snapshot.json
 ```
 
+Set `C3_MAP=<map file>` to draw a map saved from the web page's builder, and `C3_MAP_LAYERS=<number>` to choose layers.
+
 The arguments are: font folder, output folder, latitude, longitude, range index (0–3), military-only (0 or 1), then one or more snapshots.
 
 ### Web API
@@ -221,15 +256,17 @@ The arguments are: font folder, output folder, latitude, longitude, range index 
 | Request | Purpose |
 |---|---|
 | `GET /api/state` | Current settings and aircraft counts as JSON |
-| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `brightness`, `rotation`, `invert`, `swap_rb`, `port` |
+| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `map_layers`, `name`, `brightness`, `rotation`, `invert`, `swap_rb`, `port` |
 | `GET /screen.bmp` | The current screen as a 360×360 BMP |
+| `POST /api/map` | Upload a map file (multipart form); the format is described in `include/ui/map_layer.h` |
+| `POST /api/map/delete` | Remove the stored map |
 
 The web page has no password; anyone on your network can open it.
 
 ## Credits and licence
 
 - Original project: [ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar) by MatixYo.
-- Aircraft data: [adsb.fi open data](https://opendata.adsb.fi/). Airport data: [OurAirports](https://ourairports.com/).
+- Aircraft data: [adsb.fi open data](https://opendata.adsb.fi/). Airport data: [OurAirports](https://ourairports.com/). Map data: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, via the Overpass API.
 - Libraries: [LovyanGFX](https://github.com/lovyan03/LovyanGFX), [WiFiManager](https://github.com/tzapu/WiFiManager), [ArduinoJson](https://github.com/bblanchon/ArduinoJson).
 
 Released under the [MIT licence](LICENSE).

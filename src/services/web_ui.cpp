@@ -10,8 +10,10 @@
 #include "hardware/display.h"
 #include "services/adsb_client.h"
 #include "services/device_settings.h"
+#include "services/map_store.h"
 #include "services/radar_location.h"
 #include "services/web_page.h"
+#include "ui/map_layer.h"
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
@@ -21,7 +23,8 @@ namespace services::web {
 namespace {
 
 WebServer* s_server = nullptr;
-bool s_port_changed = false;
+bool s_restart_needed = false;
+bool s_map_upload_ok = false;
 
 constexpr uint32_t kBmpHeaderSize = 14 + 40 + 12;
 constexpr uint32_t kBmpImageSize =
@@ -39,6 +42,8 @@ void handleState() {
   JsonDocument doc;
   doc["version"] = config::kFirmwareVersion;
   doc["ip"] = WiFi.localIP().toString();
+  doc["name"] = device::name();
+  doc["host"] = device::hostUrl();
   doc["port"] = device::httpPort();
   doc["lat"] = serialized(String(location::lat(), 6));
   doc["lon"] = serialized(String(location::lon(), 6));
@@ -54,6 +59,18 @@ void handleState() {
   doc["miles"] = ui::radar::useMiles();
   doc["runways"] = ui::radar::showRunways();
   doc["mil"] = ui::radar::militaryOnly();
+  doc["map_layers"] = ui::radar::mapLayers();
+  JsonObject map = doc["map"].to<JsonObject>();
+  const ui::map::Info& info = ui::map::info();
+  map["present"] = info.valid;
+  map["capacity"] = mapstore::capacity();
+  if (info.valid) {
+    map["lat"] = serialized(String(info.lat, 4));
+    map["lon"] = serialized(String(info.lon, 4));
+    map["bytes"] = info.bytes;
+    map["offset_km"] = serialized(String(ui::map::centerOffsetKm(), 1));
+    map["usable"] = ui::map::centerOffsetKm() <= ui::map::kMaxCenterOffsetKm;
+  }
   doc["brightness"] = device::brightness();
   doc["rotation"] = device::rotation();
   doc["invert"] = device::invertColors();
@@ -132,6 +149,16 @@ void handleSettings() {
     ui::radar::setMilitaryOnly(argBool("mil"));
     refetch = true;
   }
+  if (srv.hasArg("map_layers")) {
+    ui::radar::setMapLayers(static_cast<uint8_t>(srv.arg("map_layers").toInt()));
+  }
+  if (srv.hasArg("name")) {
+    const String before = device::hostname();
+    device::setName(srv.arg("name").c_str());
+    if (before != device::hostname()) {
+      s_restart_needed = true;  // re-announce under the new network name
+    }
+  }
   if (srv.hasArg("miles")) {
     ui::radar::setUseMiles(argBool("miles"));
   }
@@ -168,7 +195,7 @@ void handleSettings() {
 
   if (new_port != 0 && new_port != device::httpPort()) {
     device::setHttpPort(new_port);
-    s_port_changed = true;  // the server restarts after this reply is sent
+    s_restart_needed = true;  // the server restarts after this reply is sent
   }
   sendResult(true, nullptr);
 }
@@ -229,6 +256,39 @@ void handleScreen() {
   ui::radarDisplayStreamFrame(sendRows, s_server);
 }
 
+/** Multipart upload of a map blob: streamed straight into flash. */
+void handleMapUploadChunk() {
+  HTTPUpload& up = s_server->upload();
+  switch (up.status) {
+    case UPLOAD_FILE_START:
+      s_map_upload_ok = mapstore::uploadBegin();
+      break;
+    case UPLOAD_FILE_WRITE:
+      if (s_map_upload_ok) {
+        s_map_upload_ok = mapstore::uploadWrite(up.buf, up.currentSize);
+      }
+      break;
+    case UPLOAD_FILE_END:
+      s_map_upload_ok = s_map_upload_ok && mapstore::uploadEnd();
+      break;
+    default:  // aborted
+      s_map_upload_ok = false;
+      mapstore::clear();
+      break;
+  }
+}
+
+void handleMapUploadDone() {
+  const bool ok = s_map_upload_ok;
+  s_map_upload_ok = false;
+  sendResult(ok, "The device did not accept the map (too large or damaged)");
+}
+
+void handleMapDelete() {
+  mapstore::clear();
+  sendResult(true, nullptr);
+}
+
 }  // namespace
 
 void registerRoutes(WebServer& server) {
@@ -238,12 +298,14 @@ void registerRoutes(WebServer& server) {
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/settings", HTTP_POST, handleSettings);
   server.on("/screen.bmp", HTTP_GET, handleScreen);
+  server.on("/api/map", HTTP_POST, handleMapUploadDone, handleMapUploadChunk);
+  server.on("/api/map/delete", HTTP_POST, handleMapDelete);
 }
 
-bool consumePortChange() {
-  const bool changed = s_port_changed;
-  s_port_changed = false;
-  return changed;
+bool consumeRestartRequest() {
+  const bool needed = s_restart_needed;
+  s_restart_needed = false;
+  return needed;
 }
 
 }  // namespace services::web
