@@ -341,12 +341,15 @@ $('mapget').onclick=async()=>{
   if(!st)return;
   $('mapget').disabled=true;
   try{
+    const t0=Date.now();
     const r=await buildMap(+st.lat,+st.lon,Math.max(4096,(st.map.room||262144)-4096),mapnote);
+    const t1=Date.now();
     mapnote('Sending '+Math.round(r.blob.length/1024)+' KB to the radar\u2026');
     const fd=new FormData();fd.append('map',new Blob([r.blob]),'map.bin');
     const j=await(await fetch('/api/map',{method:'POST',body:fd})).json();
     if(!j.ok)throw new Error(j.error);
-    mapnote('Map installed'+(r.skipped.length?' (could not get: '+r.skipped.join(', ')+')':''),r.skipped.length>0);
+    const secs=ms=>Math.max(1,Math.round(ms/1000))+' s';
+    mapnote('Map installed ('+Math.round(r.blob.length/1024)+' KB; download '+secs(t1-t0)+', sending '+secs(Date.now()-t1)+')'+(r.skipped.length?' (could not get: '+r.skipped.join(', ')+')':''),r.skipped.length>0);
   }catch(e){mapnote('Map download failed: '+(e.message||e),true)}
   $('mapget').disabled=false;load();shot(300);
 };
@@ -407,19 +410,23 @@ $('fwgo').onclick=()=>{
 // Builds the radar's map file from OpenStreetMap (Overpass API). Everything
 // heavy happens here in the browser; the radar only stores and draws the result.
 const MAP_SERVERS=['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-const MAP_KM=40,MAP_UNIT_M=2,MAP_CHUNK=48;
-async function osmQuery(q){
-  const body='data='+encodeURIComponent('[out:json][timeout:90];'+q);
+  'https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const MAP_KM=40,MAP_UNIT_M=2,MAP_CHUNK=48,MAP_TRY_MS=35000;
+// One query. Starts on server number `first` (so parallel queries spread over
+// the servers), gives each try MAP_TRY_MS, then moves on to the next server.
+async function osmQuery(q,first){
+  const body='data='+encodeURIComponent('[out:json][timeout:30];'+q);
   let err=new Error('no map server reachable');
-  for(let pass=0;pass<2;pass++)for(const u of MAP_SERVERS){
+  for(let n=0;n<MAP_SERVERS.length+1;n++){
+    const u=MAP_SERVERS[((first||0)+n)%MAP_SERVERS.length];
+    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),MAP_TRY_MS);
     try{
-      const r=await fetch(u,{method:'POST',body,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
-      if(r.ok)return(await r.json()).elements||[];
+      const r=await fetch(u,{method:'POST',body,signal:ctl.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+      if(r.ok){const j=await r.json();clearTimeout(timer);return j.elements||[]}
       err=new Error('map server said '+r.status);
-      if(r.status===400){err.fatal=true;throw err}
-    }catch(e){if(e.fatal)throw e;err=e}
-    await new Promise(res=>setTimeout(res,1500));
+      if(r.status===400){err.fatal=true;throw err}      // the query itself was refused
+    }catch(e){if(e.fatal){clearTimeout(timer);throw e}err=e.name==='AbortError'?new Error('map server too slow'):e}
+    clearTimeout(timer);
   }
   throw err;
 }
@@ -504,26 +511,32 @@ async function buildMap(lat,lon,maxBytes,say){
     if(minLen){let len=0;for(let i=1;i<pts.length;i++)len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
       if(len<minLen)continue}
     lines.push({layer,pts})}};
-  const step=async(label,fn)=>{say('Downloading '+label+'\u2026');try{await fn()}catch(e){skipped.push(label)}};
   const ascii=t=>(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,'').trim().slice(0,19);
-
-  await step('coastline',async()=>add(0,await osmQuery('way["natural"="coastline"]'+B+';out geom;')));
-  await step('lakes',async()=>{
-    let w;
-    try{w=await osmQuery('(way["natural"="water"](if:length()>4000)'+B+';relation["natural"="water"](if:length()>6000)'+B+';);out geom;')}
-    catch(e){w=await osmQuery('(way["natural"="water"]["name"]'+B+';relation["natural"="water"]["name"]'+B+';);out geom;')}
-    add(1,w,1500);                                 // outlines of 3 km or more
-  });
-  await step('rivers',async()=>add(2,await osmQuery('way["waterway"~"^(river|canal)$"]'+B+';out geom;')));
-  await step('borders',async()=>add(3,await osmQuery(
-    'relation["boundary"="administrative"]["admin_level"~"^(2|4)$"]'+B+';way(r)'+B+'["maritime"!="yes"];out geom;')));
-  await step('roads',async()=>{
-    for(const e of await osmQuery('way["highway"~"^(motorway|trunk)$"]'+B+';out geom;'))
-      add(e.tags&&e.tags.highway==='motorway'?5:4,[e]);
-  });
-  await step('towns and airfields',async()=>{
-    const els=await osmQuery('(node["place"~"^(city|town|village)$"]["name"]'+B+';way["aeroway"="runway"]'+B+
-      ';nwr["aeroway"="aerodrome"]'+B+';);out geom;');
+  // The layers are fetched side by side, each starting on a different server.
+  // Each asks only for what is drawn ("out ids geom" = shapes without tags);
+  // if a server refuses the short form, the plain "out geom" is used instead.
+  let done=0;const total=6;
+  const ask=async(n,q,out)=>{try{return await osmQuery(q+out,n)}catch(e){if(!e.fatal)throw e;return osmQuery(q+'out geom;',n)}};
+  const step=async(label,fn)=>{try{await fn()}catch(e){skipped.push(label)}
+    say('Downloading map… '+(++done)+' of '+total+' layers');};
+  say('Downloading map…');
+  await Promise.all([
+    step('coastline',async()=>add(0,await ask(0,'way["natural"="coastline"]'+B+';','out ids geom;'))),
+    // Lakes: tagged lakes and reservoirs, named waters and large (multi-part)
+    // waters. Small ones are dropped below; asking for every pond is what
+    // made this layer slow.
+    step('lakes',async()=>add(1,await ask(1,'(way["natural"="water"]["water"~"^(lake|reservoir|lagoon|basin)$"]'+B+
+      ';way["natural"="water"]["name"]'+B+';relation["natural"="water"]'+B+';);','out skel geom;'),1500)),
+    step('rivers',async()=>add(2,await ask(2,'way["waterway"~"^(river|canal)$"]'+B+';','out ids geom;'))),
+    step('borders',async()=>add(3,await ask(3,
+      'relation["boundary"="administrative"]["admin_level"~"^(2|4)$"]'+B+';way(r)'+B+'["maritime"!="yes"];','out ids geom;'))),
+    step('roads',async()=>{
+      for(const e of await ask(0,'way["highway"~"^(motorway|trunk)$"]'+B+';','out tags geom;'))
+        add(e.tags&&e.tags.highway==='motorway'?5:4,[e]);
+    }),
+    step('towns and airfields',async()=>{
+      const els=await ask(1,'(node["place"~"^(city|town|village)$"]["name"]'+B+';way["aeroway"="runway"]'+B+
+        ';nwr["aeroway"="aerodrome"]'+B+';);','out geom;');
     const towns=[],fields=[];
     for(const e of els){
       const t=e.tags||{};
@@ -531,7 +544,7 @@ async function buildMap(lat,lon,maxBytes,say){
       const pos=e.type==='node'?e:(e.bounds?{lat:(e.bounds.minlat+e.bounds.maxlat)/2,lon:(e.bounds.minlon+e.bounds.maxlon)/2}:null);
       if(!pos)continue;
       const xy=P(pos).map(Math.round);
-      if(Math.abs(xy[0])>20000||Math.abs(xy[1])>20000)continue;
+      if(!(Math.abs(xy[0])<=20000&&Math.abs(xy[1])<=20000))continue;   // also drops missing positions
       if(t.aeroway==='aerodrome'){
         const code=ascii(t.icao||t.faa||t.ref||t.local_ref).toUpperCase();
         if(/^[A-Z0-9]{2,6}$/.test(code))fields.push({layer:8,rank:0,x:xy[0],y:xy[1],text:code});
@@ -543,7 +556,8 @@ async function buildMap(lat,lon,maxBytes,say){
     }
     towns.sort((a,b)=>b.rank-a.rank||b.pop-a.pop);
     labels.push(...fields.slice(0,80),...towns.slice(0,400));
-  });
+    }),
+  ]);
   if(!lines.length&&!labels.length)throw new Error('no map data received (is this browser online?)');
   say('Preparing map\u2026');
   // Coarsen the outlines until the file fits the radar's storage.
