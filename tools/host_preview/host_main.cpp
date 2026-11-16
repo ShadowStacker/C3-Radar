@@ -155,6 +155,9 @@ int main(int argc, char** argv) {
     std::printf("map %s: %s (%u bytes)\n", map_path, ok ? "ok" : "REJECTED",
                 static_cast<unsigned>(map_blob.size()));
   }
+  if (const char* show = std::getenv("C3_AC_SHOW")) {
+    ui::radar::setAircraftShow(static_cast<uint8_t>(std::atoi(show)));
+  }
   if (const char* layers = std::getenv("C3_MAP_LAYERS")) {
     ui::radar::setMapLayers(static_cast<uint8_t>(std::atoi(layers)));
   }

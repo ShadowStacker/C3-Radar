@@ -91,7 +91,7 @@ Versions before 0.11 had no update slot. Moving from one of those needs one last
 2. On your phone or computer, join the Wi-Fi network shown on the screen, **`PlaneRadar-XXXX`** (the last four characters differ per device).
 3. A setup page should open by itself. If it doesn't, browse to `http://192.168.4.1`.
 4. Choose **Configure WiFi**, pick your home network and enter its password.
-5. On the same form, enter your **latitude and longitude** (right-click any spot in Google Maps to copy them). You can also set miles, runways, military-only, the web server port and a device name here.
+5. On the same form, enter your **latitude and longitude** (until you do, the radar is centred on Redmond Municipal Airport, Oregon) (right-click any spot in Google Maps to copy them). You can also set miles, runways, military-only, the web server port and a device name here.
 6. Save. The device restarts its connection, shows **Connected** with its web address for a few seconds, then starts the radar.
 
 ## Reading the display
@@ -132,7 +132,7 @@ Once the radar is on your network, open the address shown on the **Connected** s
 | Section | What it does |
 |---|---|
 | Display | Live copy of the screen, refreshed about every 2 seconds, and the range buttons |
-| Aircraft | Military-only, runways and miles/kilometres switches |
+| Aircraft | Military-only, runways and miles/kilometres switches; switches for each tag line (callsign, type, altitude), the speed line and the trail; and a key to the altitude colours |
 | Map | Download or remove the map, and a switch for each map layer |
 | Location | Latitude and longitude of the radar centre |
 | Colours | Theme picker and the custom colour editor |
@@ -291,7 +291,7 @@ The arguments are: font folder, output folder, latitude, longitude, range index 
 | Request | Purpose |
 |---|---|
 | `GET /api/state` | Current settings and aircraft counts as JSON |
-| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `map_layers`, `name`, `theme`, `custom`, `custom_alt`, `brightness`, `rotation`, `invert`, `port` |
+| `POST /api/settings` | Form fields, any subset of: `lat`, `lon`, `range`, `mil`, `miles`, `runways`, `ac_show`, `map_layers`, `name`, `theme`, `custom`, `custom_alt`, `brightness`, `rotation`, `invert`, `port` |
 | `GET /screen.bmp` | The current screen as a 360×360 BMP |
 | `POST /api/map` | Upload a map file (multipart form); the format is described in `include/ui/map_layer.h` |
 | `POST /api/map/delete` | Remove the stored map |

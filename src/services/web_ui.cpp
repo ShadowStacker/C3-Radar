@@ -65,6 +65,16 @@ void handleState() {
   doc["miles"] = ui::radar::useMiles();
   doc["runways"] = ui::radar::showRunways();
   doc["mil"] = ui::radar::militaryOnly();
+  doc["ac_show"] = ui::radar::aircraftShow();
+  JsonArray key = doc["alt_key"].to<JsonArray>();
+  for (size_t i = 0; i < ui::theme::kAltitudeStopCount; ++i) {
+    const ui::theme::AltitudeStop& stop = ui::theme::kAltitudeStops[i];
+    char hex[8];
+    snprintf(hex, sizeof(hex), "#%02x%02x%02x", stop.r, stop.g, stop.b);
+    JsonArray entry = key.add<JsonArray>();
+    entry.add(stop.alt_ft);
+    entry.add(hex);
+  }
   doc["map_layers"] = ui::radar::mapLayers();
   JsonObject map = doc["map"].to<JsonObject>();
   const ui::map::Info& info = ui::map::info();
@@ -203,6 +213,9 @@ void handleSettings() {
       sendResult(false, "Unknown theme");
       return;
     }
+  }
+  if (srv.hasArg("ac_show")) {
+    ui::radar::setAircraftShow(static_cast<uint8_t>(srv.arg("ac_show").toInt()));
   }
   if (srv.hasArg("map_layers")) {
     ui::radar::setMapLayers(static_cast<uint8_t>(srv.arg("map_layers").toInt()));

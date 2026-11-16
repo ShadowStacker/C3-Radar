@@ -51,6 +51,18 @@ struct Palette {
   bool altitude_colors;
 };
 
+/** Altitude colour scale (feet -> colour), linearly blended between stops. */
+struct AltitudeStop {
+  int32_t alt_ft;
+  uint8_t r, g, b;
+};
+constexpr AltitudeStop kAltitudeStops[] = {
+    {0, 255, 120, 40},      {3000, 255, 205, 40},   {8000, 120, 232, 70},
+    {15000, 40, 222, 170},  {25000, 70, 175, 255},  {35000, 160, 135, 255},
+    {42000, 235, 115, 255},
+};
+constexpr size_t kAltitudeStopCount = sizeof(kAltitudeStops) / sizeof(kAltitudeStops[0]);
+
 /** Load the saved choice. Call once at boot. */
 void init();
 const Palette& palette();

@@ -4,7 +4,7 @@
 
 #include <driver/gpio.h>
 
-#define PLANE_RADAR_VERSION "0.11.0"
+#define PLANE_RADAR_VERSION "0.12.0"
 
 namespace config {
 
@@ -62,8 +62,9 @@ constexpr uint16_t kDefaultHttpPort = 80;
 constexpr unsigned long kConnectedScreenMs = 3500;
 
 // --- Radar center defaults (overridden via WiFi setup portal) ---
-constexpr double kDefaultRadarLat = 52.3676;
-constexpr double kDefaultRadarLon = 4.9041;
+// Redmond Municipal Airport (Roberts Field, KRDM), Oregon.
+constexpr double kDefaultRadarLat = 44.2541;
+constexpr double kDefaultRadarLon = -121.1500;
 
 /** Poll adsb.fi (API public limit: 1 req/s). */
 constexpr unsigned long kAdsbFetchIntervalMs = 5000;

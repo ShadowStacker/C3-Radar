@@ -71,6 +71,19 @@ input[type=file]{max-width:100%;color:var(--dim)}
   <label class="sw"><input type="checkbox" data-k="runways"><span></span></label></div>
  <div class="row"><div>Distances in miles</div>
   <label class="sw"><input type="checkbox" data-k="miles"><span></span></label></div>
+ <div class="row"><div>Callsign</div><label class="sw"><input type="checkbox" data-abit="1"><span></span></label></div>
+ <div class="row"><div>Aircraft type</div><label class="sw"><input type="checkbox" data-abit="2"><span></span></label></div>
+ <div class="row"><div>Altitude</div><label class="sw"><input type="checkbox" data-abit="4"><span></span></label></div>
+ <div class="row"><div>Speed line<small>The line ahead of each aircraft</small></div><label class="sw"><input type="checkbox" data-abit="8"><span></span></label></div>
+ <div class="row"><div>Trail<small>The dots behind each aircraft</small></div><label class="sw"><input type="checkbox" data-abit="16"><span></span></label></div>
+ <div id="altkey" style="margin-top:12px">
+  <div style="color:var(--dim);font-size:13px;margin-bottom:4px">Aircraft colour by altitude (feet)</div>
+  <div id="altbar" style="height:14px;border-radius:7px;border:1px solid var(--line)"></div>
+  <div id="altticks" style="position:relative;height:1.5em;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums"></div>
+  <div style="font-size:12px;color:var(--dim)"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff4030;vertical-align:-1px" id="mildot"></span> military
+   &nbsp; <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#a5afbe;vertical-align:-1px"></span> altitude unknown</div>
+ </div>
+ <div id="altoff" style="display:none;margin-top:10px;font-size:13px;color:var(--dim)">This theme draws all aircraft in one colour.</div>
 </div>
 
 <div class="card">
@@ -153,6 +166,17 @@ function fill(s){
   $('hostinfo').textContent='Address: '+s.host+(s.port===80?'':':'+s.port);
   document.querySelectorAll('input[data-bit]').forEach(c=>c.checked=!!(s.map_layers&+c.dataset.bit));
   $('ver').textContent=s.version;fillTheme(s);
+  document.querySelectorAll('input[data-abit]').forEach(c=>c.checked=!!(s.ac_show&+c.dataset.abit));
+  // Altitude key: the same colour stops the radar uses, on a linear scale.
+  const cur=s.themes.find(t=>t.id===s.theme),k=s.alt_key,top=k[k.length-1][0];
+  if(cur)$('mildot').style.background=cur.colors[13];
+  $('altkey').style.display=cur&&cur.alt?'':'none';$('altoff').style.display=cur&&cur.alt?'none':'';
+  $('altbar').style.background='linear-gradient(90deg,'+k.map(e=>e[1]+' '+(e[0]*100/top).toFixed(1)+'%').join(',')+')';
+  const tk=$('altticks');tk.textContent='';
+  k.forEach((e,i)=>{const d=document.createElement('span');const pct=e[0]*100/top;
+    d.textContent=i===k.length-1?(e[0]/1000)+'k+':e[0]?(e[0]/1000)+'k':'0';
+    d.style.cssText='position:absolute;top:2px;left:'+pct+'%;transform:translateX('+(i===0?'0':i===k.length-1?'-100%':'-50%')+')';
+    tk.appendChild(d)});
   const m=s.map;
   $('mapstat').textContent=!m.present?'No map stored on the radar.':
     'Map stored for '+m.lat+', '+m.lon+' ('+Math.max(1,Math.round(m.bytes/1024))+' KB)'+
@@ -204,6 +228,10 @@ $('savename').onclick=async()=>{
 document.querySelectorAll('input[data-bit]').forEach(c=>c.onchange=()=>{
   let mask=0;document.querySelectorAll('input[data-bit]').forEach(x=>{if(x.checked)mask|=+x.dataset.bit});
   post({map_layers:mask}).then(load).then(()=>shot(300));
+});
+document.querySelectorAll('input[data-abit]').forEach(c=>c.onchange=()=>{
+  let mask=0;document.querySelectorAll('input[data-abit]').forEach(x=>{if(x.checked)mask|=+x.dataset.abit});
+  post({ac_show:mask}).then(load).then(()=>shot(300));
 });
 function mapnote(t,err){const n=$('mapnote');n.textContent=t;n.style.color=err?'var(--warn)':'var(--acc)'}
 $('mapget').onclick=async()=>{

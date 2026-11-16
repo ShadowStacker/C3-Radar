@@ -139,6 +139,7 @@ struct PlaneItem {
   uint8_t trail_count;
   bool has_vector;
   bool has_tag;
+  bool show_call;
   bool show_type;
   bool show_alt;
   int8_t climb;  // -1 descending, 0 level/unknown, +1 climbing
@@ -213,31 +214,24 @@ size_t s_obstacle_count = 0;
 // -------------------------------------------------------------------- colours
 
 uint16_t altitudeColor(int32_t alt_ft) {
-  struct Stop {
-    int32_t alt;
-    uint8_t r, g, b;
-  };
-  static constexpr Stop kStops[] = {
-      {0, 255, 120, 40},      {3000, 255, 205, 40},   {8000, 120, 232, 70},
-      {15000, 40, 222, 170},  {25000, 70, 175, 255},  {35000, 160, 135, 255},
-      {42000, 235, 115, 255},
-  };
-  constexpr size_t kN = sizeof(kStops) / sizeof(kStops[0]);
+  using Stop = theme::AltitudeStop;
+  const Stop* const kStops = theme::kAltitudeStops;
+  constexpr size_t kN = theme::kAltitudeStopCount;
   if (!pal().altitude_colors) {
     return pal().aircraft;
   }
   if (alt_ft == services::adsb::kAltUnknown || alt_ft == services::adsb::kAltGround) {
     return pal().aircraft_unknown;
   }
-  if (alt_ft <= kStops[0].alt) {
+  if (alt_ft <= kStops[0].alt_ft) {
     return radar::rgb565(kStops[0].r, kStops[0].g, kStops[0].b);
   }
   for (size_t i = 1; i < kN; ++i) {
-    if (alt_ft <= kStops[i].alt) {
+    if (alt_ft <= kStops[i].alt_ft) {
       const Stop& a = kStops[i - 1];
       const Stop& b = kStops[i];
-      const int32_t span = b.alt - a.alt;
-      const int32_t t = alt_ft - a.alt;
+      const int32_t span = b.alt_ft - a.alt_ft;
+      const int32_t t = alt_ft - a.alt_ft;
       const auto lerp = [&](int32_t from, int32_t to) {
         return static_cast<uint8_t>(from + (to - from) * t / span);
       };
@@ -403,7 +397,7 @@ bool tagSpotFree(const Rect& r, size_t self) {
 void measureTag(const Aircraft& plane, const PlaneItem& item, int* w, int* h) {
   int lines = 0;
   int max_w = 0;
-  if (plane.callsign[0] != '\0') {
+  if (item.show_call) {
     max_w = std::max(max_w, textWidth(plane.callsign, kTagFont));
     ++lines;
   }
@@ -472,24 +466,32 @@ void layoutTag(size_t self) {
   PlaneItem& item = s_items[self];
   const Aircraft& plane = s_planes[item.index];
   item.has_tag = false;
-  if (plane.callsign[0] == '\0' && plane.type[0] == '\0' && plane.alt[0] == '\0') {
+  const uint8_t show = radar::aircraftShow();
+  item.show_call = (show & radar::kShowCallsign) != 0 && plane.callsign[0] != '\0';
+  item.show_type = (show & radar::kShowType) != 0 && plane.type[0] != '\0';
+  item.show_alt = (show & radar::kShowAltitude) != 0 && plane.alt[0] != '\0';
+  const int lines = item.show_call + item.show_type + item.show_alt;
+  if (lines == 0) {
     return;
   }
 
   int w = 0;
   int h = 0;
-  item.show_type = plane.type[0] != '\0';
-  item.show_alt = plane.alt[0] != '\0';
   measureTag(plane, item, &w, &h);
   if (placeTag(self, w, h)) {
     item.has_tag = true;
     return;
   }
-  if (plane.callsign[0] == '\0' || (!item.show_type && !item.show_alt)) {
+  if (lines == 1) {
     return;
   }
-  item.show_type = false;
-  item.show_alt = false;
+  // No room for the whole block: keep the single most useful line.
+  if (item.show_call) {
+    item.show_type = false;
+    item.show_alt = false;
+  } else {
+    item.show_type = false;
+  }
   measureTag(plane, item, &w, &h);
   item.has_tag = placeTag(self, w, h);
 }
@@ -675,7 +677,9 @@ void buildFrame() {
     item.nose_y = static_cast<int16_t>(
         item.y - lroundf(cosf(nose_rad) * radar::kAircraftNoseLenPx));
 
-    const int len = speedLineLengthPx(plane.gs_knots);
+    const uint8_t show = radar::aircraftShow();
+    const int len =
+        (show & radar::kShowSpeedLine) != 0 ? speedLineLengthPx(plane.gs_knots) : 0;
     item.has_vector = false;
     if (len > 0) {
       const float track_rad = plane.track_deg * kDegToRad;
@@ -690,7 +694,9 @@ void buildFrame() {
     // Trail: the last reported fix, then older fixes.
     item.trail_count = 0;
     const int trail_limit = (kRingR - 2) * (kRingR - 2);
-    for (size_t t = 0; t <= plane.trail_count && t <= services::adsb::kTrailPoints; ++t) {
+    for (size_t t = 0; (show & radar::kShowTrail) != 0 && t <= plane.trail_count &&
+                       t <= services::adsb::kTrailPoints;
+         ++t) {
       float t_lat = plane.lat;
       float t_lon = plane.lon;
       if (t > 0) {
@@ -912,7 +918,7 @@ void drawTags() {
     };
 
     int y = r.y + kTagPadY;
-    if (plane.callsign[0] != '\0') {
+    if (item.show_call) {
       const uint16_t color = plane.military ? pal().mil_callsign : pal().callsign;
       drawText(plane.callsign, lineX(textWidth(plane.callsign, kTagFont)), y,
                kTagFont, color, textdatum_t::top_left);

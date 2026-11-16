@@ -52,6 +52,18 @@ bool militaryOnly();
 void setUseMiles(bool on);
 void setShowRunways(bool on);
 void setMilitaryOnly(bool on);
+/** What is drawn for each aircraft (bit mask, stored in NVS). */
+enum AircraftShow : uint8_t {
+  kShowCallsign = 1 << 0,
+  kShowType = 1 << 1,
+  kShowAltitude = 1 << 2,
+  kShowSpeedLine = 1 << 3,  // the line ahead of the aircraft
+  kShowTrail = 1 << 4,      // the dots behind it
+  kAircraftShowAll = 0x1F,
+};
+uint8_t aircraftShow();
+void setAircraftShow(uint8_t mask);
+
 /** Map layer switches: bit mask of ui::map::Toggle. */
 uint8_t mapLayers();
 void setMapLayers(uint8_t mask);

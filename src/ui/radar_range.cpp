@@ -19,6 +19,7 @@ constexpr char kPrefsMilesKey[] = "useMiles";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
 constexpr char kPrefsMilitaryKey[] = "milOnly";
 constexpr char kPrefsMapLayersKey[] = "mapLayers";
+constexpr char kPrefsAircraftShowKey[] = "acShow";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
 constexpr float kKmPerMile = 1.609344f;
 
@@ -28,6 +29,7 @@ bool s_use_miles = false;
 bool s_show_runways = true;
 bool s_military_only = false;
 uint8_t s_map_layers = ui::map::kToggleDefault;
+uint8_t s_aircraft_show = kAircraftShowAll;
 
 void saveMilitaryOnly() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
@@ -87,6 +89,8 @@ void rangeInit() {
   s_military_only = s_prefs.getBool(kPrefsMilitaryKey, false);
   s_map_layers = s_prefs.getUChar(kPrefsMapLayersKey, ui::map::kToggleDefault) &
                  ui::map::kToggleAll;
+  s_aircraft_show =
+      s_prefs.getUChar(kPrefsAircraftShowKey, kAircraftShowAll) & kAircraftShowAll;
   s_prefs.end();
 }
 
@@ -122,6 +126,20 @@ bool useMiles() { return s_use_miles; }
 bool showRunways() { return s_show_runways; }
 
 bool militaryOnly() { return s_military_only; }
+
+uint8_t aircraftShow() { return s_aircraft_show; }
+
+void setAircraftShow(uint8_t mask) {
+  mask &= kAircraftShowAll;
+  if (mask == s_aircraft_show) {
+    return;
+  }
+  s_aircraft_show = mask;
+  if (s_prefs.begin(kPrefsNamespace, false)) {
+    s_prefs.putUChar(kPrefsAircraftShowKey, s_aircraft_show);
+    s_prefs.end();
+  }
+}
 
 uint8_t mapLayers() { return s_map_layers; }
 
@@ -195,7 +213,9 @@ void unitsReset() {
   s_show_runways = true;
   s_military_only = false;
   s_map_layers = ui::map::kToggleDefault;
+  s_aircraft_show = kAircraftShowAll;
   if (s_prefs.begin(kPrefsNamespace, false)) {
+    s_prefs.remove(kPrefsAircraftShowKey);
     s_prefs.remove(kPrefsMapLayersKey);
     s_prefs.remove(kPrefsMilesKey);
     s_prefs.remove(kPrefsRunwaysKey);
