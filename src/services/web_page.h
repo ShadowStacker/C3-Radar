@@ -351,6 +351,9 @@ $('mapget').onclick=async()=>{
     const t0=Date.now();
     const r=await buildMap(+st.lat,+st.lon,Math.max(4096,(st.map.room||262144)-4096),mapnote);
     const t1=Date.now();
+    // Never swap a good map for a mostly empty one.
+    if(r.skipped.length>2)throw new Error('the OpenStreetMap servers are busy ('+r.skipped.join(', ')+
+      '). Nothing was changed on the radar; try again in a few minutes.');
     mapnote('Sending '+Math.round(r.blob.length/1024)+' KB to the radar\u2026');
     const fd=new FormData();fd.append('map',new Blob([r.blob]),'map.bin');
     const j=await(await fetch('/api/map',{method:'POST',body:fd})).json();
@@ -419,24 +422,39 @@ $('fwgo').onclick=()=>{
 /*MAPGEN-BEGIN*/
 // Builds the radar's map file from OpenStreetMap (Overpass API). Everything
 // heavy happens here in the browser; the radar only stores and draws the result.
-const MAP_SERVERS=['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-const MAP_KM=40,MAP_UNIT_M=2,MAP_CHUNK=48,MAP_TRY_MS=35000;
-// One query. Starts on server number `first` (so parallel queries spread over
-// the servers), gives each try MAP_TRY_MS, then moves on to the next server.
-async function osmQuery(q,first){
-  const body='data='+encodeURIComponent('[out:json][timeout:30];'+q);
+// The main OpenStreetMap query server first; the others only if it fails.
+const MAP_SERVERS=[['https://overpass-api.de/api/interpreter',3],['https://overpass.private.coffee/api/interpreter',1],
+  ['https://overpass.kumi.systems/api/interpreter',1]];
+const MAP_KM=36,MAP_UNIT_M=2,MAP_CHUNK=48,MAP_TRY_MS=45000,MAP_BUSY_WAIT_MS=5000;
+// One query. A busy server (429 / 503 / 504) is asked again after a pause,
+// which is what it wants; a server that hangs or errors is skipped.
+async function osmQuery(q){
+  const body='data='+encodeURIComponent('[out:json][timeout:40];'+q);
   let err=new Error('no map server reachable');
-  for(let n=0;n<MAP_SERVERS.length+1;n++){
-    const u=MAP_SERVERS[((first||0)+n)%MAP_SERVERS.length];
-    const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),MAP_TRY_MS);
-    try{
-      const r=await fetch(u,{method:'POST',body,signal:ctl.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
-      if(r.ok){const j=await r.json();clearTimeout(timer);return j.elements||[]}
-      err=new Error('map server said '+r.status);
-      if(r.status===400){err.fatal=true;throw err}      // the query itself was refused
-    }catch(e){if(e.fatal){clearTimeout(timer);throw e}err=e.name==='AbortError'?new Error('map server too slow'):e}
-    clearTimeout(timer);
+  for(const[u,tries]of MAP_SERVERS){
+    for(let t=0;t<tries;t++){
+      const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),MAP_TRY_MS);
+      let busy=false;
+      try{
+        const r=await fetch(u,{method:'POST',body,signal:ctl.signal,headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+        if(r.ok){
+          const j=await r.json();clearTimeout(timer);
+          // A query the server gave up on still answers "200" with a remark.
+          if(j.remark&&/timed out|out of memory|runtime error/i.test(j.remark)){err=new Error('too much data for the server');break}
+          return j.elements||[];
+        }
+        if(r.status===400){err=new Error('query refused');err.fatal=true;throw err}
+        busy=r.status===429||r.status===503||r.status===504;
+        err=new Error(busy?'server busy':'server error '+r.status);
+      }catch(e){
+        clearTimeout(timer);
+        if(e.fatal)throw e;
+        err=e.name==='AbortError'?new Error('server too slow'):new Error('server unreachable');
+      }
+      clearTimeout(timer);
+      if(!busy)break;                                   // next server
+      await new Promise(res=>setTimeout(res,MAP_BUSY_WAIT_MS));
+    }
   }
   throw err;
 }
@@ -522,15 +540,15 @@ async function buildMap(lat,lon,maxBytes,say){
       if(len<minLen)continue}
     lines.push({layer,pts})}};
   const ascii=t=>(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,'').trim().slice(0,19);
-  // The layers are fetched side by side, each starting on a different server.
-  // Each asks only for what is drawn ("out ids geom" = shapes without tags);
-  // if a server refuses the short form, the plain "out geom" is used instead.
-  let done=0;const total=6;
-  const ask=async(n,q,out)=>{try{return await osmQuery(q+out,n)}catch(e){if(!e.fatal)throw e;return osmQuery(q+'out geom;',n)}};
-  const step=async(label,fn)=>{try{await fn()}catch(e){skipped.push(label)}
-    say('Downloading map… '+(++done)+' of '+total+' layers');};
+  // Each layer asks only for what is drawn ("out ids geom" = shapes without
+  // tags); if a server refuses the short form, the plain "out geom" is used.
+  // Two run at a time: that is what the main server allows one visitor.
+  let done=0;
+  const ask=async(n,q,out)=>{try{return await osmQuery(q+out)}catch(e){if(!e.fatal)throw e;return osmQuery(q+'out geom;')}};
+  const step=(label,fn)=>async()=>{try{await fn()}catch(e){skipped.push(label+' ('+(e.message||'failed')+')')}
+    say('Downloading map… '+(++done)+' of '+jobs.length+' layers');};
   say('Downloading map…');
-  await Promise.all([
+  const jobs=[
     step('coastline',async()=>add(0,await ask(0,'way["natural"="coastline"]'+B+';','out ids geom;'))),
     // Lakes: tagged lakes and reservoirs, named waters and large (multi-part)
     // waters. Small ones are dropped below; asking for every pond is what
@@ -567,7 +585,10 @@ async function buildMap(lat,lon,maxBytes,say){
     towns.sort((a,b)=>b.rank-a.rank||b.pop-a.pop);
     labels.push(...fields.slice(0,80),...towns.slice(0,400));
     }),
-  ]);
+  ];
+  let next=0;
+  const worker=async()=>{while(next<jobs.length)await jobs[next++]()};
+  await Promise.all([worker(),worker()]);
   if(!lines.length&&!labels.length)throw new Error('no map data received (is this browser online?)');
   say('Preparing map\u2026');
   // Coarsen the outlines until the file fits the radar's storage.

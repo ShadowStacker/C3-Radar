@@ -188,7 +188,7 @@ To save a spot, type a name and click **Save to list**. You can keep up to eight
 *Rendered with coarse Natural Earth data; OpenStreetMap gives far more detail.*
 
 1. Move the radar to where you want the map.
-2. Under **Map**, click **Download map for this location**. Your browser fetches about 40 km in every direction from OpenStreetMap, shrinks it, and sends it to the radar. The browser needs internet access. The layers download side by side from several OpenStreetMap servers; when it finishes, the page reports how long the download and the transfer to the radar each took.
+2. Under **Map**, click **Download map for this location**. Your browser fetches about 36 km in every direction from OpenStreetMap, shrinks it, and sends it to the radar. The browser needs internet access. The layers download two at a time from the main OpenStreetMap query server, with backup servers if it fails. When it finishes, the page reports how long the download and the transfer to the radar each took. If more than two layers cannot be fetched, nothing is changed on the radar and the page says which ones failed and why.
 3. Switch layers on and off as you like:
 
 | Switch | Shows |
