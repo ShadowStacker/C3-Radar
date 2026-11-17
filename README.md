@@ -176,7 +176,7 @@ Changes apply immediately and are remembered after a power cut.
 There are three ways to move the radar:
 
 - **Type coordinates** into Latitude and Longitude and click **Move radar here**. You can paste a pair copied from a map, such as `44.2541, -121.1500`, straight into the Latitude box.
-- **Drag the live picture** with the mouse or a finger. The centre moves by the same distance at the current range.
+- **Drag the live picture** with the mouse or a finger. While you drag, the frame and compass stay put and the view slides inside them; a cross marks the new centre and a label shows how far and which way it moves. Let go and the radar re-centres there.
 - **Click a saved location.**
 
 To save a spot, type a name and click **Save to list**. You can keep up to eight. Click **×** to remove one. A location marked "· map" has its own stored map.

@@ -27,7 +27,7 @@ h1{font-size:20px;margin:0}
 .chip button{border-radius:9px 0 0 9px;padding:6px 10px}
 .chip button+button{border-radius:0 9px 9px 0;border-left:0;padding:6px 9px;color:var(--dim)}
 .chip.on button:first-child{background:var(--acc);border-color:var(--acc);color:#04130a;font-weight:600}
-.scope img{pointer-events:none;width:100%;height:100%;display:block;border-radius:50%;image-rendering:auto}
+.scope canvas{pointer-events:none;width:100%;height:100%;display:block;border-radius:50%}
 .scope .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
  padding:18%;color:var(--dim)}
 .seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -65,11 +65,11 @@ input[type=file]{max-width:100%;color:var(--dim)}
 
 <div class="card">
  <h2>Display</h2>
- <div class="scope"><img id="scr" alt="Live copy of the radar display"><div class="msg" id="scrmsg">Loading&hellip;</div></div>
+ <div class="scope"><canvas id="scr" width="360" height="360" role="img" aria-label="Live copy of the radar display"></canvas><div class="msg" id="scrmsg">Loading&hellip;</div></div>
  <div style="text-align:center;color:var(--dim);font-size:13px;margin:-4px 0 10px">Drag the picture to move the radar&rsquo;s centre</div>
  <div class="seg" id="ranges"></div>
  <div class="row" style="margin-top:8px"><div>Live view<small>Copies the screen every couple of seconds</small></div>
-  <label class="sw"><input type="checkbox" id="live" checked><span></span></label></div>
+  <label class="sw"><input type="checkbox" id="live" checked autocomplete="off"><span></span></label></div>
 </div>
 
 <div class="stack">
@@ -236,14 +236,68 @@ function fill(s){
   for(const k of['lat','lon','port','brightness','rotation','name'])if(!dirty.has(k)&&document.activeElement!==$(k))$(k).value=s[k];
 }
 async function load(){try{fill(await(await fetch('/api/state')).json())}catch(e){$('stat').textContent='device not responding'}}
-function shot(delay){
-  clearTimeout(timer);
-  timer=setTimeout(()=>{if($('live').checked&&!document.hidden)$('scr').src='/screen.bmp?t='+Date.now()},delay);
+// Live view: pictures are drawn on a canvas, so the last one stays up while
+// the next loads, and a drag can slide just the inside of the scope.
+const cv=$('scr'),g=cv.getContext('2d');
+let frame=null,loading=null,pan=null,updating=false;
+// A reload must not bring back an "off" the browser remembered from an update.
+$('live').checked=true;
+function showMsg(t){const m=$('scrmsg');m.textContent=t||'';m.style.display=t?'flex':'none'}
+function themeColour(slot,fallback){const t=st&&st.themes.find(x=>x.id===st.theme);return t?t.colors[slot]:fallback}
+function panKm(){return st?st.outer_km/st.ring_px:0}   // kilometres per canvas pixel
+function panLabel(){
+  if(!pan||!st)return'';
+  const east=-pan.dx*panKm(),north=pan.dy*panKm(),km=Math.hypot(east,north);
+  if(km<0.05)return'';
+  const dir=['N','NE','E','SE','S','SW','W','NW'][Math.round(((Math.atan2(east,north)*180/Math.PI)+360)%360/45)%8];
+  const d=st.miles?km/1.609344:km;
+  return(d<10?d.toFixed(1):Math.round(d))+(st.miles?' mi ':' km ')+dir;
 }
-$('scr').onload=()=>{if(panning){panning=false;$('scr').style.transform=''}$('scrmsg').style.display='none';$('scr').style.visibility='visible';shot(1500)};
-$('scr').onerror=()=>{$('scr').style.visibility='hidden';$('scrmsg').style.display='flex';
-  $('scrmsg').textContent='The radar is not on screen right now';shot(4000)};
-$('live').onchange=()=>shot(0);
+function draw(){
+  g.clearRect(0,0,360,360);
+  if(!frame)return;
+  g.drawImage(frame,0,0,360,360);
+  if(!pan)return;
+  // Moving: the frame, compass and outer ring stay put and the inside slides.
+  // Where the old picture does not reach there is nothing to show yet.
+  const r=(st?st.ring_px:154)-1;
+  g.save();
+  g.beginPath();g.arc(180,180,r,0,2*Math.PI);g.clip();
+  g.fillStyle=themeColour(1,'#061026');g.fillRect(0,0,360,360);
+  g.beginPath();g.arc(180+pan.dx,180+pan.dy,r,0,2*Math.PI);g.clip();
+  g.drawImage(frame,pan.dx,pan.dy,360,360);
+  g.restore();
+  g.strokeStyle=themeColour(2,'#1a6846');g.lineWidth=2;
+  g.beginPath();g.arc(180,180,r,0,2*Math.PI);g.stroke();
+  // The new centre, and how far it moves.
+  const ink=themeColour(3,'#ffffff');
+  // Dark outline under a light cross, so it shows on any map or theme.
+  g.beginPath();g.moveTo(169,180);g.lineTo(191,180);g.moveTo(180,169);g.lineTo(180,191);
+  g.strokeStyle='rgba(0,0,0,.7)';g.lineWidth=4;g.stroke();
+  g.strokeStyle=ink;g.lineWidth=1.5;g.stroke();
+  const label=panLabel();
+  if(label){
+    g.font='600 15px system-ui,sans-serif';g.textAlign='center';
+    const w=g.measureText(label).width+16;
+    g.fillStyle='rgba(0,0,0,.6)';g.fillRect(180-w/2,230,w,24);
+    g.fillStyle=ink;g.fillText(label,180,247);
+  }
+}
+function shot(delay){clearTimeout(timer);timer=setTimeout(fetchShot,delay)}
+function fetchShot(){
+  if(!$('live').checked){if(!frame)showMsg('Live view is off');return}
+  if(document.hidden||updating||drag||loading)return;
+  const img=new Image();loading=img;
+  // A picture that never arrives must not stop the live view for good.
+  const guard=setTimeout(()=>{if(loading!==img)return;loading=null;img.src='';
+    if(!frame)showMsg('Waiting for the picture from the radar…');shot(1000)},20000);
+  img.onload=()=>{clearTimeout(guard);if(loading!==img)return;loading=null;
+    frame=img;pan=null;draw();showMsg('');shot(1500)};
+  img.onerror=()=>{clearTimeout(guard);if(loading!==img)return;loading=null;
+    frame=null;pan=null;draw();showMsg('The radar is not on screen right now');shot(4000)};
+  img.src='/screen.bmp?t='+Date.now();
+}
+$('live').onchange=()=>{if($('live').checked)shot(0);else{clearTimeout(timer);if(!frame)showMsg('Live view is off')}};
 document.addEventListener('visibilitychange',()=>shot(0));
 document.querySelectorAll('input[data-k]').forEach(c=>c.onchange=()=>
   post({[c.dataset.k]:c.checked?1:0}).then(load).then(()=>shot(300)));
@@ -298,21 +352,26 @@ function fillPlaces(s){
   });
 }
 // Drag the live picture to move the radar's centre.
-const scope=document.querySelector('.scope');let drag=null,panning=false;
-scope.onpointerdown=e=>{if(!st||e.button>0)return;drag={x:e.clientX,y:e.clientY};scope.setPointerCapture(e.pointerId);clearTimeout(timer)};
-scope.onpointermove=e=>{if(drag)$('scr').style.transform='translate('+(e.clientX-drag.x)+'px,'+(e.clientY-drag.y)+'px)'};
-scope.onpointercancel=()=>{drag=null;$('scr').style.transform='';shot(0)};
-scope.onpointerup=e=>{
+const scope=document.querySelector('.scope');let drag=null;
+scope.onpointerdown=e=>{
+  if(!st||!frame||e.button>0)return;
+  drag={x:e.clientX,y:e.clientY,k:360/scope.clientWidth};scope.setPointerCapture(e.pointerId);
+  clearTimeout(timer);if(loading){loading.src='';loading=null}
+  pan={dx:0,dy:0};draw();
+};
+scope.onpointermove=e=>{if(!drag)return;pan={dx:(e.clientX-drag.x)*drag.k,dy:(e.clientY-drag.y)*drag.k};draw()};
+scope.onpointercancel=()=>{drag=null;pan=null;draw();shot(0)};
+scope.onpointerup=()=>{
   if(!drag)return;
-  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag=null;
-  if(Math.hypot(dx,dy)<5){$('scr').style.transform='';shot(0);return}
-  // Screen pixels -> kilometres at the current range -> degrees.
-  const km=st.outer_km/st.ring_px*360/scope.clientWidth;
-  const lat=Math.max(-89.9,Math.min(89.9,+st.lat+dy*km/111));
-  let lon=+st.lon-dx*km/(111*Math.cos(+st.lat*Math.PI/180));
+  drag=null;
+  if(Math.hypot(pan.dx,pan.dy)<4){pan=null;draw();shot(0);return}
+  // Canvas pixels -> kilometres at the current range -> degrees.
+  const km=panKm();
+  const lat=Math.max(-89.9,Math.min(89.9,+st.lat+pan.dy*km/111));
+  let lon=+st.lon-pan.dx*km/(111*Math.cos(+st.lat*Math.PI/180));
   lon=((lon+540)%360)-180;
-  panning=true;
-  setLocation({pos:lat.toFixed(6)+','+lon.toFixed(6)},'Radar moved');
+  // The slid preview stays up until the re-centred picture arrives.
+  setLocation({pos:lat.toFixed(6)+','+lon.toFixed(6)},'Radar moved').then(j=>{if(!j.ok){pan=null;draw();shot(0)}});
 };
 
 // After a port or name change the web server restarts: follow it there.
@@ -407,13 +466,13 @@ $('fwgo').onclick=()=>{
   if(!f){fwnote('Choose the update file first',true);return}
   const fd=new FormData();fd.append('firmware',f,f.name);
   const x=new XMLHttpRequest();
-  $('fwgo').disabled=true;clearTimeout(timer);$('live').checked=false;
+  $('fwgo').disabled=true;clearTimeout(timer);updating=true;   // pause the live view during the upload
   x.upload.onprogress=e=>{if(e.lengthComputable)fwnote('Uploading… '+Math.round(e.loaded*100/e.total)+'%')};
-  x.onerror=()=>{fwnote('Connection lost during the update',true);$('fwgo').disabled=false};
+  x.onerror=()=>{fwnote('Connection lost during the update',true);$('fwgo').disabled=false;updating=false;shot(0)};
   x.onload=()=>{
     let j={};try{j=JSON.parse(x.responseText)}catch(e){}
     if(j.ok){fwnote('Update installed. The radar is restarting…');setTimeout(()=>location.reload(),15000)}
-    else{fwnote(j.error||'Update failed',true);$('fwgo').disabled=false}
+    else{fwnote(j.error||'Update failed',true);$('fwgo').disabled=false;updating=false;shot(0)}
   };
   x.open('POST','/api/update');x.send(fd);
 };
