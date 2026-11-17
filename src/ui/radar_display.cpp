@@ -608,7 +608,12 @@ void refreshStaticLayer() {
   key.range_index = radar::rangeIndex();
   key.runways = radar::showRunways();
   key.miles = radar::useMiles();
+  // "Show airport runways" is the master switch for every runway and airport
+  // code, including the smaller airfields that come with a downloaded map.
   key.map_layers = radar::mapLayers();
+  if (!key.runways) {
+    key.map_layers &= static_cast<uint8_t>(~map::kShowAirfields);
+  }
   key.map_generation = map::generation();
   if (key == s_static_key) {
     return;

@@ -188,7 +188,7 @@ To save a spot, type a name and click **Save to list**. You can keep up to eight
 *Rendered with coarse Natural Earth data; OpenStreetMap gives far more detail.*
 
 1. Move the radar to where you want the map.
-2. Under **Map**, click **Download map for this location**. Your browser fetches about 36 km in every direction from OpenStreetMap, shrinks it, and sends it to the radar. The browser needs internet access. The layers download two at a time from the main OpenStreetMap query server. A layer that is too heavy to fetch in one go is fetched again in four parts, using backup servers if needed, and the whole download gives up after three minutes. When it finishes, the page reports how long the download and the transfer to the radar each took. If more than two layers cannot be fetched, nothing is changed on the radar and the page says which ones failed and why.
+2. Under **Map**, click **Download map for this location**. Your browser fetches about 40 km in every direction from OpenStreetMap, one layer at a time, shrinks it, and sends it to the radar. The browser needs internet access. It can take a few minutes, depending on how busy the OpenStreetMap servers are; when it finishes, the page reports how long the download and the transfer to the radar took.
 3. Switch layers on and off as you like:
 
 | Switch | Shows |
@@ -199,7 +199,7 @@ To save a spot, type a name and click **Save to list**. You can keep up to eight
 | Motorways | Motorways |
 | Main roads | Trunk roads that are not motorways (off by default) |
 | Town names | Cities and towns; villages too at the 5 and 10 km ranges |
-| Airfields | Every runway and airfield code in the area, not just large airports |
+| Airfields | Runways and codes of smaller airfields too, not just large airports. Only shown while **Show airport runways** is on. |
 
 Things to know:
 
@@ -216,13 +216,13 @@ Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributor
 | Switch | Effect |
 |---|---|
 | Military aircraft only | Hides everything not flagged military and shows a `MIL ONLY` badge, so an empty radar isn't mistaken for a fault |
-| Show airport runways | Runways of large airports from the built-in database |
+| Show airport runways | Every runway and airport code: large airports from the built-in database, and smaller airfields from a downloaded map when its **Airfields** layer is on |
 | Distances in miles | Range labels in miles instead of kilometres |
 | Callsign, Aircraft type, Altitude | Each line of the tag |
 | Speed line | The line ahead of each aircraft |
 | Trail | The dots behind each aircraft |
 
-Below the switches is a key to the altitude colours, from 0 to 42,000 ft and above. It is hidden for themes that draw all aircraft in one colour.
+Below the switches is a key to the altitude colours, from 0 to 42,000 ft and above. Every built-in theme uses this scale; it is hidden only for a custom theme with **Colour aircraft by altitude** switched off.
 
 Military status comes from the data feed's aircraft database, so coverage depends on that database, and military aircraft that don't broadcast their position won't appear.
 
@@ -230,7 +230,7 @@ Military status comes from the data feed's aircraft database, so coverage depend
 
 ![The five built-in themes](docs/images/themes.png)
 
-Pick a theme under **Colours**: Night navy (default), Classic green, Amber, Night red or Daylight. Choose **Custom** to edit your own; it starts as a copy of whichever theme was showing, and each colour applies as soon as you pick it.
+Pick a theme under **Colours**: Night navy (default), Classic green, Amber, Night red or Daylight. All of them colour aircraft by altitude. Choose **Custom** to edit your own; it starts as a copy of whichever theme was showing, and each colour applies as soon as you pick it.
 
 | Colour | Used for |
 |---|---|

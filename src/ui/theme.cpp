@@ -19,19 +19,19 @@ const ThemeSpec kPresets[kPresetCount] = {
     {"Classic green",
      {0x000400, 0x001208, 0x0F7A2E, 0x7CFF9B, 0x5CFF7A, 0xB8FFC6, 0x5CFF7A, 0x3FD060,
       0x2FA04A, 0x1F7F4F, 0x2A6A2A, 0x4A8A3A, 0x5FAF6F, 0xFFE040},
-     false},
+     true},
     {"Amber",
      {0x060300, 0x140A00, 0x8A5A10, 0xFFC860, 0xFFB020, 0xFFE0A0, 0xFFB020, 0xE09020,
       0xB07818, 0x7A5A28, 0x6A4410, 0x8A6A30, 0xB89050, 0xFF5030},
-     false},
+     true},
     {"Night red",
      {0x000000, 0x0C0000, 0x6A0C0C, 0xE03030, 0xFF3A3A, 0xFF6A6A, 0xD03030, 0xB02828,
       0x8A2020, 0x5A1818, 0x4A1010, 0x6A2020, 0x8A3030, 0xFF9A30},
-     false},
+     true},
     {"Daylight",
      {0xC8D2DC, 0xF2F5F8, 0x7A9AB0, 0x102030, 0x1050C0, 0x101820, 0x8A4A00, 0x0A5AA0,
       0x2A7A8A, 0x2A78D0, 0xB06A10, 0x8A4AA0, 0x506070, 0xD01818},
-     false},
+     true},
 };
 
 namespace {
@@ -107,7 +107,9 @@ void derive(const ThemeSpec& spec) {
   p.mil_callsign = to565(mix(mil, strong, 40));
   p.badge_back = to565(mix(mil, black, 55));
   p.badge_text = to565(white);
-  p.outline = to565(dark ? mix(bg, black, 60) : mix(scope, white, 60));
+  // Dark outline on both: on light themes it is what keeps yellow and green
+  // aircraft readable.
+  p.outline = to565(dark ? mix(bg, black, 60) : mix(text, black, 30));
   p.aircraft = to565(split(spec.rgb[kSlotAircraft]));
   p.aircraft_unknown = to565(mix(text, scope, 35));
   p.coast = to565(water);
