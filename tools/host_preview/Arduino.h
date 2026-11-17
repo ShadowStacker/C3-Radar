@@ -9,6 +9,7 @@
 #include <cstring>
 
 unsigned long millis();
+inline void delay(unsigned long) {}
 inline unsigned long micros() { return millis() * 1000UL; }
 void hostSetMillis(unsigned long ms);
 

@@ -42,11 +42,18 @@ int activeIndex();
  */
 void selectForLocation();
 
-/** Streamed upload of a map for the current location; it replaces the old one. */
-bool uploadBegin();
+/**
+ * Streamed upload of a map for the current location; it replaces the old map
+ * for that spot. With expected_bytes known and room for both, the old map is
+ * kept until the new one has been checked, so a failed upload loses nothing.
+ */
+bool uploadBegin(size_t expected_bytes);
 bool uploadWrite(const uint8_t* data, size_t len);
 /** Validates what was written and starts using it. False if it is not a map. */
 bool uploadEnd();
+
+/** True if a stored map was made within kSameSpotKm of lat / lon. */
+bool hasMapNear(double lat, double lon);
 
 /** Remove one stored map. */
 bool remove(size_t index);

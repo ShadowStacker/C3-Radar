@@ -74,5 +74,7 @@ bool select(uint8_t id);
 /** The user's custom colours (starts as a copy of the default theme). */
 const ThemeSpec& custom();
 void setCustom(const uint32_t rgb[kSlotCount], bool altitude_colors);
+/** Back to Night navy with the custom palette cleared (BOOT long-press reset). */
+void reset();
 
 }  // namespace ui::theme

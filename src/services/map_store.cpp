@@ -22,6 +22,8 @@ size_t s_count = 0;
 int s_active = -1;
 
 size_t s_write_start = 0;
+/** Old map for the same spot, removed only once the new one is in place. */
+bool s_replace_after_upload = false;
 size_t s_write_pos = 0;
 size_t s_erased_to = 0;
 bool s_upload_ok = false;
@@ -33,12 +35,15 @@ size_t endOfMaps() {
   return s_count == 0 ? 0 : roundUp(s_entries[s_count - 1].offset + s_entries[s_count - 1].bytes);
 }
 
-float distanceKm(double lat, double lon) {
-  const float here_lat = static_cast<float>(location::lat());
-  const float dx = static_cast<float>(lon - location::lon()) * 111.0f *
-                   cosf(here_lat * 0.01745329252f);
-  const float dy = static_cast<float>(lat - location::lat()) * 111.0f;
+float distanceKm(double lat_a, double lon_a, double lat_b, double lon_b) {
+  const float dx = static_cast<float>(lon_a - lon_b) * 111.0f *
+                   cosf(static_cast<float>(lat_b) * 0.01745329252f);
+  const float dy = static_cast<float>(lat_a - lat_b) * 111.0f;
   return sqrtf(dx * dx + dy * dy);
+}
+
+float distanceKm(double lat, double lon) {
+  return distanceKm(lat, lon, location::lat(), location::lon());
 }
 
 /** Rebuild the index by walking the partition from the start. */
@@ -55,10 +60,13 @@ void scan() {
   }
 }
 
-int mapNearCurrentLocation(float within_km) {
+int mapNearCurrentLocation(float within_km, int skip = -1) {
   int best = -1;
   float best_km = within_km;
   for (size_t i = 0; i < s_count; ++i) {
+    if (static_cast<int>(i) == skip) {
+      continue;
+    }
     const float km = distanceKm(s_entries[i].lat, s_entries[i].lon);
     if (km <= best_km) {
       best_km = km;
@@ -86,6 +94,7 @@ bool removeAndCompact(size_t index) {
         esp_partition_write(s_part, dst, sector, kSector) != ESP_OK) {
       return false;
     }
+    delay(1);  // let Wi-Fi and the idle task run during a long copy
   }
   // Whatever follows the moved data must not look like a map any more.
   if (dst < s_part->size) {
@@ -167,8 +176,9 @@ void selectForLocation() {
   ui::map::attach(s_mapped + s_entries[best].offset, s_entries[best].bytes);
 }
 
-bool uploadBegin() {
+bool uploadBegin(size_t expected_bytes) {
   s_upload_ok = false;
+  s_replace_after_upload = false;
   if (s_part == nullptr) {
     return false;
   }
@@ -177,8 +187,14 @@ bool uploadBegin() {
   s_active = -1;
   const int same = mapNearCurrentLocation(kSameSpotKm);
   if (same >= 0) {
-    removeAndCompact(static_cast<size_t>(same));
-    scan();
+    const bool room_for_both = expected_bytes != 0 && s_count < kMaxMaps &&
+                               expected_bytes + kSector <= s_part->size - endOfMaps();
+    if (room_for_both) {
+      s_replace_after_upload = true;  // keep the old map until the new one is good
+    } else {
+      removeAndCompact(static_cast<size_t>(same));
+      scan();
+    }
   }
   if (s_count >= kMaxMaps) {
     return false;
@@ -231,8 +247,32 @@ bool uploadEnd() {
     esp_partition_erase_range(s_part, after, kSector);
   }
   scan();
+  if (ok && s_replace_after_upload) {
+    // The new map is stored and checked: now drop the old one for this spot.
+    int fresh = -1;
+    for (size_t i = 0; i < s_count; ++i) {
+      if (s_entries[i].offset == s_write_start) {
+        fresh = static_cast<int>(i);
+      }
+    }
+    const int old = mapNearCurrentLocation(kSameSpotKm, fresh);
+    if (old >= 0) {
+      removeAndCompact(static_cast<size_t>(old));
+      scan();
+    }
+  }
+  s_replace_after_upload = false;
   selectForLocation();
   return ok;
+}
+
+bool hasMapNear(double lat, double lon) {
+  for (size_t i = 0; i < s_count; ++i) {
+    if (distanceKm(s_entries[i].lat, s_entries[i].lon, lat, lon) <= kSameSpotKm) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool remove(size_t index) {

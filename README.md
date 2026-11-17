@@ -149,7 +149,7 @@ Aircraft on the ground are hidden. Colours in this table are those of the defaul
 | Action | Effect |
 |---|---|
 | Short press | Next range: 5 → 10 → 15 → 25 km |
-| Hold 3 seconds | Erase Wi-Fi, location and all settings, then restart in setup mode. Stored maps are kept. |
+| Hold 3 seconds | Erase Wi-Fi, location and all settings (including the theme), then restart in setup mode. Stored maps are kept. |
 
 ## The web page
 
@@ -207,7 +207,7 @@ Things to know:
 - The radar keeps up to eight maps and automatically uses the one nearest its centre, within 30 km.
 - All maps share about 0.45 MB. The Map section shows how much is free.
 - A new map is simplified to fit the space that is left. If a busy area comes out too coarse, remove a map you no longer need and download again.
-- Downloading a map for a spot replaces only the map for that same area.
+- Downloading a map for a spot replaces only the map for that same area. When there is room for both, the old map is kept until the new one has arrived safely, so a failed download loses nothing.
 
 Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
 
@@ -230,7 +230,7 @@ Military status comes from the data feed's aircraft database, so coverage depend
 
 ![The five built-in themes](docs/images/themes.png)
 
-Pick a theme under **Colours**: Night navy (default), Classic green, Amber, Night red or Daylight. All of them colour aircraft by altitude. Choose **Custom** to edit your own; it starts as a copy of whichever theme was showing, and each colour applies as soon as you pick it.
+Pick a theme under **Colours**: Night navy (default), Classic green, Amber, Night red or Daylight. All of them colour aircraft by altitude and use the same colours for military aircraft and for the map layers (teal airports, blue water, amber roads, purple borders, grey town names); Daylight uses darker shades of those so they read on its light background. Choose **Custom** to edit your own; it starts as a copy of whichever theme was showing, and each colour applies as soon as you pick it.
 
 | Colour | Used for |
 |---|---|
@@ -287,7 +287,8 @@ Under **Firmware update**, choose the new `-update.bin` file for your board and 
 | `NO DATA` badge | None of the data feeds can be reached. Check your internet connection; **Device health** shows the feed and the last request. |
 | Location is refused | The message quotes what the radar received. Enter plain decimal numbers, such as `44.2541` and `-121.1500`. |
 | Map download fails | The browser must be online. If only some layers fail, the page lists them; try again later. |
-| Stuck on the yellow **Could not connect** screen | Hold **BOOT** for 3 seconds and run setup again |
+| Stuck on the yellow **Could not connect** screen | The radar keeps retrying your saved network in the background, so it recovers by itself once the router is back. If your Wi-Fi details changed, hold **BOOT** for 3 seconds and run setup again. |
+| Setup hotspot appears after a power cut | Your router was probably still starting. When a network is already saved, the hotspot closes after 3 minutes (unless you are using it) and the radar goes back to retrying your network. |
 | Firmware update is refused | Choose the `-update.bin` for your board, not a `-full.bin` and not the other board's file |
 | Radar keeps restarting, or shows `SAFE MODE` | After three abnormal restarts in a row it starts in safe mode: stored maps are not loaded (after five, aircraft data is off too) so the web page stays reachable. The page says why it restarted. Remove the maps or install other firmware, then click **Restart normally**. |
 | Black screen with no "C3-Radar starting" text at power-up | The display itself is not responding: check wiring and power |

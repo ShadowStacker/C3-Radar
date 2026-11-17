@@ -23,6 +23,7 @@
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
+#include "ui/theme.h"
 
 portMUX_TYPE s_boot_mux = portMUX_INITIALIZER_UNLOCKED;
 volatile bool s_boot_tap_pending = false;
@@ -76,8 +77,11 @@ void stopLanWebPortal();
 bool wifiLinkUp();
 
 constexpr int kCoordParamLen = 20;
+// Plain text, not type="number": number boxes report an empty value (or block
+// the form) for input the browser dislikes, such as extra decimals or a
+// decimal comma. The radar parses and checks the text itself.
 constexpr char kCoordInputAttrs[] =
-    " type=\"number\" step=\"0.000001\"";
+    " type=\"text\" inputmode=\"decimal\" autocomplete=\"off\"";
 
 WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
@@ -236,14 +240,14 @@ void resetWifiCredentials() {
   services::location::clear();
   ui::radar::unitsReset();
   services::device::reset();
-  Serial.println("WiFi credentials, location, units and web port cleared");
+  ui::theme::reset();
+  Serial.println("WiFi credentials, location and all settings cleared");
 }
 
+void limitTxPower();
+
 void onConfigPortalApStarted(WiFiManager*) {
-#if CONFIG_IDF_TARGET_ESP32C3
-  // C3 Super Mini boards brown out / fail to associate at full transmit power.
-  WiFi.setTxPower(WIFI_POWER_8_5dBm);
-#endif
+  limitTxPower();
   ui::radarDisplayHidden();
   statusScreenPortal();
 #ifdef WM_MDNS
@@ -328,12 +332,17 @@ void stopLanWebPortal() {
 #endif
 }
 
-void prepareSta() {
+void limitTxPower() {
 #if CONFIG_IDF_TARGET_ESP32C3
-  // C3 Super Mini boards brown out / fail to associate at full transmit power.
+  // C3 Super Mini boards brown out / fail to associate at full transmit
+  // power. Only takes effect while Wi-Fi is on, so call after mode / begin.
   WiFi.setTxPower(WIFI_POWER_8_5dBm);
 #endif
+}
+
+void prepareSta() {
   WiFi.mode(WIFI_STA);
+  limitTxPower();
   WiFi.setSleep(WIFI_PS_NONE);
   WiFi.setAutoReconnect(true);
 }
@@ -345,6 +354,7 @@ void startStaConnect(const String& ssid, const String& pass) {
   } else {
     WiFi.begin();
   }
+  limitTxPower();  // some core versions reset it on begin
 }
 
 bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
@@ -424,6 +434,12 @@ bool connectSavedNetwork(bool show_ui) {
 }
 
 bool openConfigPortal() {
+  // With a network already saved (it was just unreachable - say the router
+  // was still starting after a power cut), close the hotspot after a while
+  // and go back to retrying it. Using the setup page keeps the hotspot open.
+  const bool have_saved = storedWifiCredentials();
+  s_wm.setConfigPortalTimeout(have_saved ? config::kWifiSavedNetworkPortalSec
+                                         : config::kWifiPortalTimeoutSec);
   stopLanWebPortal();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);

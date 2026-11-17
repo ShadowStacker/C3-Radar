@@ -11,6 +11,9 @@ namespace ui::theme {
 
 //                    background scope     grid      text      aircraft  callsign  type      altitude
 //                    airports   water     roads     borders   towns     military
+// All presets colour aircraft by altitude and share the map-layer and
+// military colours of Night navy (Daylight uses darker shades of the same
+// hues, to read on its light background).
 const ThemeSpec kPresets[kPresetCount] = {
     {"Night navy",
      {0x02050E, 0x061026, 0x1A6846, 0xFFFFFF, 0xFFC828, 0xFFFFFF, 0xFFC83C, 0x6ECDFF,
@@ -18,15 +21,15 @@ const ThemeSpec kPresets[kPresetCount] = {
      true},
     {"Classic green",
      {0x000400, 0x001208, 0x0F7A2E, 0x7CFF9B, 0x5CFF7A, 0xB8FFC6, 0x5CFF7A, 0x3FD060,
-      0x2FA04A, 0x1F7F4F, 0x2A6A2A, 0x4A8A3A, 0x5FAF6F, 0xFFE040},
+      0x3896AA, 0x5096DC, 0xC88E3E, 0xAA7DC3, 0xBEC8DA, 0xFF4030},
      true},
     {"Amber",
      {0x060300, 0x140A00, 0x8A5A10, 0xFFC860, 0xFFB020, 0xFFE0A0, 0xFFB020, 0xE09020,
-      0xB07818, 0x7A5A28, 0x6A4410, 0x8A6A30, 0xB89050, 0xFF5030},
+      0x3896AA, 0x5096DC, 0xC88E3E, 0xAA7DC3, 0xBEC8DA, 0xFF4030},
      true},
     {"Night red",
      {0x000000, 0x0C0000, 0x6A0C0C, 0xE03030, 0xFF3A3A, 0xFF6A6A, 0xD03030, 0xB02828,
-      0x8A2020, 0x5A1818, 0x4A1010, 0x6A2020, 0x8A3030, 0xFF9A30},
+      0x3896AA, 0x5096DC, 0xC88E3E, 0xAA7DC3, 0xBEC8DA, 0xFF4030},
      true},
     {"Daylight",
      {0xC8D2DC, 0xF2F5F8, 0x7A9AB0, 0x102030, 0x1050C0, 0x101820, 0x8A4A00, 0x0A5AA0,
@@ -166,6 +169,18 @@ bool select(uint8_t id) {
 }
 
 const ThemeSpec& custom() { return s_custom; }
+
+void reset() {
+  s_id = 0;
+  memcpy(s_custom.rgb, kPresets[0].rgb, sizeof(s_custom.rgb));
+  s_custom.altitude_colors = kPresets[0].altitude_colors;
+  Preferences prefs;
+  if (prefs.begin(kNamespace, false)) {
+    prefs.clear();
+    prefs.end();
+  }
+  derive(activeSpec());
+}
 
 void setCustom(const uint32_t rgb[kSlotCount], bool altitude_colors) {
   for (size_t i = 0; i < kSlotCount; ++i) {

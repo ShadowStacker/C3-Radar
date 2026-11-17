@@ -7,7 +7,7 @@
 #include <sdkconfig.h>  // CONFIG_IDF_TARGET_* (absent in the PC preview build)
 #endif
 
-#define PLANE_RADAR_VERSION "0.14.7"
+#define PLANE_RADAR_VERSION "0.14.8"
 
 namespace config {
 
@@ -26,6 +26,8 @@ constexpr char kPortalHostname[] = "plane-radar";
 constexpr unsigned long kWifiConnectAttemptMs = 15000;
 constexpr uint8_t kWifiConnectAttempts = 3;
 constexpr unsigned long kWifiPortalTimeoutSec = 0;  // 0 = no timeout while configuring
+/** Hotspot time-out when a network is already saved; then the radar retries it. */
+constexpr unsigned long kWifiSavedNetworkPortalSec = 180;
 constexpr unsigned long kWifiConnectingFrameMs = 50;
 /** Wait after disconnect before reconnecting (avoids portal on brief drops). */
 constexpr unsigned long kWifiDownGraceMs = 4000;

@@ -100,12 +100,14 @@ void setup() {
   services::device::init();
   ui::theme::init();
   displayInit();
-  // Grab the strip buffer while the heap is still unfragmented.
   // Something on screen straight away, so a black screen always means the
   // display itself (wiring / power) and not a later start-up step.
   statusScreenBoot(config::kFirmwareVersion,
                    services::boot::safeMode() ? "Safe mode" : nullptr);
+  // Grab the strip buffer while the heap is still unfragmented.
   ui::radarDisplayInit();
+  // The saved location first: the map store picks the map nearest to it.
+  services::location::init();
   services::mapstore::init();
   if (services::boot::safeMode()) {
     ui::radarDisplaySetNotice("SAFE MODE");
@@ -113,7 +115,6 @@ void setup() {
   if (wifiShowsSetupScreenOnBoot()) {
     statusScreenPortal();
   }
-  services::location::init();
   ui::radar::rangeInit();
   services::adsb::init();
 
@@ -121,8 +122,8 @@ void setup() {
     showConnectedInfo();
   }
 
-  // Start the background ADS-B fetch (pinned to core 0, away from the render
-  // loop on core 1). It checks Wi-Fi state each cycle.
+  // Start the background ADS-B fetch. On the dual-core S3 it runs on core 0,
+  // away from the render loop on core 1; the C3 has a single core.
   xTaskCreatePinnedToCore(adsbFetchTask, "adsb", 16384, nullptr, 1, nullptr, 0);
 }
 

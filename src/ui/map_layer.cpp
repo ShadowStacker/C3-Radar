@@ -42,6 +42,8 @@ struct Visible {
 constexpr size_t kMaxVisible = 1200;
 Visible s_visible[kMaxVisible];
 size_t s_visible_count = 0;
+/** More visible records than fit the cache: draw straight from the map instead. */
+bool s_overflow = false;
 
 uint16_t rd16(const uint8_t* p) {
   return static_cast<uint16_t>(p[0] | (p[1] << 8));
@@ -211,6 +213,7 @@ float centerOffsetKm() {
 
 void prepare(uint8_t toggles) {
   s_visible_count = 0;
+  s_overflow = false;
   s_drawable = false;
   s_toggles = toggles;
   if (s_blob == nullptr || toggles == 0 || centerOffsetKm() > kMaxCenterOffsetKm) {
@@ -235,7 +238,7 @@ void prepare(uint8_t toggles) {
   const int hi = kCx + kClipR;
   uint32_t off = kHeaderSize;
   const uint32_t end = kHeaderSize + s_line_bytes;
-  while (off < end && s_visible_count < kMaxVisible) {
+  while (off < end) {
     const uint8_t* rec = s_blob + off;
     const uint32_t n = rd16(rec + 2);
     const uint32_t this_off = off;
@@ -250,6 +253,13 @@ void prepare(uint8_t toggles) {
     if (x1 < lo || x0 > hi || y_bottom < lo || y_top > hi) {
       continue;
     }
+    if (s_visible_count >= kMaxVisible) {
+      // Stopping here would silently drop the layers stored last in the file
+      // (roads, runways), so draw from the whole map instead.
+      s_overflow = true;
+      s_visible_count = 0;
+      break;
+    }
     Visible& v = s_visible[s_visible_count++];
     v.offset = this_off;
     v.y0 = static_cast<int16_t>(std::max(y_top, 0));
@@ -257,36 +267,65 @@ void prepare(uint8_t toggles) {
   }
 }
 
+void drawRecord(const uint8_t* rec) {
+  const uint32_t n = rd16(rec + 2);
+  const canvas::LineStyle style = styleFor(rec[0]);
+  const uint8_t* pt = rec + kLineHeader;
+  int px = toScreenX(rdS16(pt));
+  int py = toScreenY(rdS16(pt + 2));
+  for (uint32_t k = 1; k < n; ++k) {
+    pt += 4;
+    const int x = toScreenX(rdS16(pt));
+    const int y = toScreenY(rdS16(pt + 2));
+    // Zoomed out, many points land within a pixel of each other: skip them
+    // (but always close the line at its last point).
+    if (k + 1 < n && std::abs(x - px) + std::abs(y - py) < 2) {
+      continue;
+    }
+    canvas::thinLine(px, py, x, y, style, kClipR);
+    px = x;
+    py = y;
+  }
+}
+
 void drawLines() {
   if (!s_drawable) {
     return;
   }
-  const int band_top = canvas::s_by;
-  const int band_bottom = canvas::s_by + canvas::kBandH - 1;
-  for (size_t i = 0; i < s_visible_count; ++i) {
-    const Visible& v = s_visible[i];
-    if (v.y1 < band_top - 1 || v.y0 > band_bottom + 1) {
+  const int band_top = canvas::s_by - 1;
+  const int band_bottom = canvas::s_by + canvas::kBandH;
+  if (!s_overflow) {
+    for (size_t i = 0; i < s_visible_count; ++i) {
+      const Visible& v = s_visible[i];
+      if (v.y1 >= band_top && v.y0 <= band_bottom) {
+        drawRecord(s_blob + v.offset);
+      }
+    }
+    return;
+  }
+  // Very dense map at a wide range: walk every record, culling by its bounds.
+  const int lo = kCx - kClipR;
+  const int hi = kCx + kClipR;
+  uint32_t off = kHeaderSize;
+  const uint32_t end = kHeaderSize + s_line_bytes;
+  while (off < end) {
+    const uint8_t* rec = s_blob + off;
+    const uint32_t n = rd16(rec + 2);
+    off += kLineHeader + n * 4;
+    if (n < 2 || !layerEnabled(rec[0], s_toggles)) {
       continue;
     }
-    const uint8_t* rec = s_blob + v.offset;
-    const uint32_t n = rd16(rec + 2);
-    const canvas::LineStyle style = styleFor(rec[0]);
-    const uint8_t* pt = rec + kLineHeader;
-    int px = toScreenX(rdS16(pt));
-    int py = toScreenY(rdS16(pt + 2));
-    for (uint32_t k = 1; k < n; ++k) {
-      pt += 4;
-      const int x = toScreenX(rdS16(pt));
-      const int y = toScreenY(rdS16(pt + 2));
-      // Zoomed out, many points land within a pixel of each other: skip them
-      // (but always close the line at its last point).
-      if (k + 1 < n && std::abs(x - px) + std::abs(y - py) < 2) {
-        continue;
-      }
-      canvas::thinLine(px, py, x, y, style, kClipR);
-      px = x;
-      py = y;
+    const int y_top = toScreenY(rdS16(rec + 10));
+    const int y_bottom = toScreenY(rdS16(rec + 6));
+    if (y_bottom < band_top || y_top > band_bottom) {
+      continue;
     }
+    const int x0 = toScreenX(rdS16(rec + 4));
+    const int x1 = toScreenX(rdS16(rec + 8));
+    if (x1 < lo || x0 > hi || y_bottom < lo || y_top > hi) {
+      continue;
+    }
+    drawRecord(rec);
   }
 }
 

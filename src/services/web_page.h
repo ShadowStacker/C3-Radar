@@ -107,7 +107,7 @@ input[type=file]{max-width:100%;color:var(--dim)}
  <div class="row"><div>Borders<small>Country and state / province</small></div><label class="sw"><input type="checkbox" data-bit="4"><span></span></label></div>
  <div class="row"><div>Motorways</div><label class="sw"><input type="checkbox" data-bit="8"><span></span></label></div>
  <div class="row"><div>Main roads<small>Trunk roads that are not motorways</small></div><label class="sw"><input type="checkbox" data-bit="16"><span></span></label></div>
- <div class="row"><div>Town names<small>Villages appear at 5 and 10 km</small></div><label class="sw"><input type="checkbox" data-bit="32"><span></span></label></div>
+ <div class="row"><div>Town names<small>Cities and towns at every range; villages too at 5 and 10 km</small></div><label class="sw"><input type="checkbox" data-bit="32"><span></span></label></div>
  <div class="row"><div>Airfields<small>Smaller airfields from the map, too (needs Show airport runways)</small></div><label class="sw"><input type="checkbox" data-bit="64"><span></span></label></div>
  <small style="display:block;color:var(--dim);margin-top:8px">Your browser fetches the map from OpenStreetMap (it needs internet access)
   and sends it to the radar. Map data &copy; OpenStreetMap contributors.</small>
@@ -353,14 +353,15 @@ $('mapget').onclick=async()=>{
     const t1=Date.now();
     mapnote('Sending '+Math.round(r.blob.length/1024)+' KB to the radar\u2026');
     const fd=new FormData();fd.append('map',new Blob([r.blob]),'map.bin');
-    const j=await(await fetch('/api/map',{method:'POST',body:fd})).json();
+    const j=await(await fetch('/api/map?size='+r.blob.length,{method:'POST',body:fd})).json();
     if(!j.ok)throw new Error(j.error);
     const secs=ms=>Math.max(1,Math.round(ms/1000))+' s';
     mapnote('Map installed ('+Math.round(r.blob.length/1024)+' KB; download '+secs(t1-t0)+', sending '+secs(Date.now()-t1)+')'+(r.skipped.length?' (could not get: '+r.skipped.join(', ')+')':''),r.skipped.length>0);
   }catch(e){mapnote('Map download failed: '+(e.message||e),true)}
   $('mapget').disabled=false;load();shot(300);
 };
-$('mapdel').onclick=async()=>{await fetch('/api/map/delete',{method:'POST'});mapnote('Map removed');load();shot(300)};
+$('mapdel').onclick=async()=>{if(!confirm('Remove the stored map for this location?'))return;
+  await fetch('/api/map/delete',{method:'POST'});mapnote('Map removed');load();shot(300)};
 
 const SLOTS=['Background','Scope','Grid','Compass text','Aircraft','Callsign','Aircraft type','Altitude text',
   'Airports','Water','Roads','Borders','Town names','Military'];
@@ -396,7 +397,8 @@ $('theme').onchange=e=>{
 document.querySelectorAll('input[data-slot]').forEach(i=>i.onchange=()=>sendCustom());
 $('calt').onchange=()=>sendCustom();
 
-$('safemaps').onclick=async()=>{await fetch('/api/map/delete?all=1',{method:'POST'});load()};
+$('safemaps').onclick=async()=>{if(!confirm('Remove every stored map?'))return;
+  await fetch('/api/map/delete?all=1',{method:'POST'});load()};
 $('saferestart').onclick=async()=>{await fetch('/api/restart',{method:'POST'});
   $('safetext').textContent='Restarting\u2026';setTimeout(()=>location.reload(),12000)};
 function fwnote(t,err){const n=$('fwnote');n.textContent=t;n.style.color=err?'var(--warn)':'var(--acc)'}

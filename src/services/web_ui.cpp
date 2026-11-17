@@ -31,6 +31,8 @@ bool s_restart_needed = false;
 bool s_map_upload_ok = false;
 bool s_update_ok = false;
 bool s_update_running = false;
+/** millis() of the last firmware chunk; a stalled upload stops counting. */
+unsigned long s_update_last_ms = 0;
 bool s_reboot_pending = false;
 const char* s_update_error = "";
 
@@ -102,12 +104,7 @@ void handleState() {
     o["lat"] = serialized(String(pl.lat, 5));
     o["lon"] = serialized(String(pl.lon, 5));
     o["active"] = static_cast<int>(i) == active_place;
-    bool has_map = false;
-    for (size_t m = 0; m < mapstore::count() && !has_map; ++m) {
-      const mapstore::Entry& e = mapstore::entry(m);
-      has_map = fabs(e.lat - pl.lat) < 0.05 && fabs(e.lon - pl.lon) < 0.07;
-    }
-    o["map"] = has_map;
+    o["map"] = mapstore::hasMapNear(pl.lat, pl.lon);
   }
   doc["theme"] = ui::theme::current();
   JsonArray themes = doc["themes"].to<JsonArray>();
@@ -407,7 +404,10 @@ void handleMapUploadChunk() {
   HTTPUpload& up = s_server->upload();
   switch (up.status) {
     case UPLOAD_FILE_START:
-      s_map_upload_ok = mapstore::uploadBegin();
+      // The page sends the map's size so the old map can be kept until the
+      // new one has arrived safely.
+      s_map_upload_ok = mapstore::uploadBegin(
+          static_cast<size_t>(strtoul(s_server->arg("size").c_str(), nullptr, 10)));
       break;
     case UPLOAD_FILE_WRITE:
       if (s_map_upload_ok) {
@@ -440,9 +440,11 @@ void handleUpdateChunk() {
     case UPLOAD_FILE_START:
       s_update_ok = false;
       s_update_running = true;
+      s_update_last_ms = millis();
       s_update_error = "";
       break;
     case UPLOAD_FILE_WRITE:
+      s_update_last_ms = millis();
       if (up.totalSize == 0) {
         // First block: make sure this is an app image and not the full
         // (bootloader + app) image meant for USB flashing, which would brick
@@ -529,7 +531,18 @@ void registerRoutes(WebServer& server) {
   server.on("/api/update", HTTP_POST, handleUpdateDone, handleUpdateChunk);
 }
 
-bool updateInProgress() { return s_update_running; }
+bool updateInProgress() {
+  // The server does not always report a dropped connection: give up on an
+  // upload that has gone quiet, so aircraft data is not paused for good.
+  if (s_update_running && millis() - s_update_last_ms > 60000UL) {
+    s_update_running = false;
+    if (s_update_ok) {
+      Update.abort();
+      s_update_ok = false;
+    }
+  }
+  return s_update_running;
+}
 
 bool rebootPending() { return s_reboot_pending; }
 
