@@ -109,11 +109,13 @@ void init() {
   applyName("");
 
   Preferences prefs;
-  if (!prefs.begin(kNamespace, true)) {
+  if (!prefs.begin(kNamespace, false)) {
     return;
   }
   char stored[kMaxNameLen + 1] = "";
-  prefs.getString(kKeyName, stored, sizeof(stored));
+  if (prefs.isKey(kKeyName)) {  // avoids a NOT_FOUND error in the log
+    prefs.getString(kKeyName, stored, sizeof(stored));
+  }
   applyName(stored);
   const uint16_t port = prefs.getUShort(kKeyPort, config::kDefaultHttpPort);
   s_port = port != 0 ? port : config::kDefaultHttpPort;

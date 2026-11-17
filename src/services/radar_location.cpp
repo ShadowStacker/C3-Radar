@@ -54,7 +54,7 @@ void persistPlaces() {
 
 void init() {
   Preferences prefs;
-  prefs.begin(kPrefsNamespace, true);
+  prefs.begin(kPrefsNamespace, false);
   if (prefs.isKey(kKeyLat) && prefs.isKey(kKeyLon)) {
     const double lat = prefs.getDouble(kKeyLat, config::kDefaultRadarLat);
     const double lon = prefs.getDouble(kKeyLon, config::kDefaultRadarLon);

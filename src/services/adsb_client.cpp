@@ -8,6 +8,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <cmath>
+#include <cstdio>
 #include <cstring>
 
 #include "config.h"
@@ -209,12 +211,15 @@ bool fetchFrom(const Source& src, double center_lat, double center_lon,
   const float dist_nm = kmToNauticalMiles(fetch_radius_km);
 
   s_last_status = 0;
-  String url = src.prefix;
-  url += String(center_lat, 6);
-  url += src.lon_sep;
-  url += String(center_lon, 6);
-  url += src.dist_sep;
-  url += String(dist_nm, 0);
+  // snprintf, not String(value, n): Arduino's String pads numbers with spaces
+  // to a minimum width ("/dist/ 4"), which the feeds reject as a bad request.
+  // The distance is rounded up to whole nautical miles (feeds allow 1..250).
+  int dist = static_cast<int>(ceilf(dist_nm));
+  if (dist < 1) dist = 1;
+  if (dist > 250) dist = 250;
+  char url[160];
+  snprintf(url, sizeof(url), "%s%.6f%s%.6f%s%d", src.prefix, center_lat, src.lon_sep,
+           center_lon, src.dist_sep, dist);
 
   // Keep only the fields we render; the rest never reaches RAM.
   JsonDocument filter;
@@ -238,7 +243,7 @@ bool fetchFrom(const Source& src, double center_lat, double center_lon,
   const int code = performGetWithPoll(http);
   s_last_status = code;
   if (code != HTTP_CODE_OK) {
-    Serial.printf("adsb: HTTP %d\n", code);
+    Serial.printf("adsb: HTTP %d for %s\n", code, url);
     http.end();
     return false;
   }

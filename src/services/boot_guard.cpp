@@ -34,7 +34,7 @@ bool abnormal(esp_reset_reason_t reason) {
 void begin() {
   s_reason = esp_reset_reason();
   Preferences prefs;
-  if (prefs.begin(kNamespace, true)) {
+  if (prefs.begin(kNamespace, false)) {
     s_streak = prefs.getUChar(kKeyStreak, 0);
     prefs.end();
   }
@@ -88,7 +88,7 @@ const char* resetReason() {
     case ESP_RST_DEEPSLEEP:
       return "wake from sleep";
     default:
-      return "unknown";
+      return "reset from USB, or not known";
   }
 }
 

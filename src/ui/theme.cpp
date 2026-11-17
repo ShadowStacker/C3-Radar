@@ -135,7 +135,7 @@ void init() {
   s_custom.altitude_colors = kPresets[0].altitude_colors;
 
   Preferences prefs;
-  if (prefs.begin(kNamespace, true)) {
+  if (prefs.begin(kNamespace, false)) {
     const uint8_t id = prefs.getUChar(kKeyId, 0);
     s_id = (id < kPresetCount || id == kCustomId) ? id : 0;
     uint32_t stored[kSlotCount];

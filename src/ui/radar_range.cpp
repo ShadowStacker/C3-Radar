@@ -78,7 +78,7 @@ bool portalCheckboxChecked(const char* value) {
 }  // namespace
 
 void rangeInit() {
-  if (!s_prefs.begin(kPrefsNamespace, true)) {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
     return;
   }
   const uint8_t saved = s_prefs.getUChar(kPrefsRangeKey, kDefaultRangeIndex);

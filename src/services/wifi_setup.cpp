@@ -187,7 +187,7 @@ bool consumeForceConfigPortal() {
   }
 
   Preferences prefs;
-  if (!prefs.begin(kWifiPrefsNamespace, true)) {
+  if (!prefs.begin(kWifiPrefsNamespace, false)) {
     return false;
   }
   const bool pending = prefs.getBool(kPrefsForcePortalKey, false);
@@ -467,7 +467,7 @@ bool wifiShowsSetupScreenOnBoot() {
     return true;
   }
   Preferences prefs;
-  if (!prefs.begin(kWifiPrefsNamespace, true)) {
+  if (!prefs.begin(kWifiPrefsNamespace, false)) {
     return false;
   }
   const bool pending = prefs.getBool(kPrefsForcePortalKey, false);
